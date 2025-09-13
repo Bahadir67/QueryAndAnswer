@@ -4,7 +4,7 @@ const fs = require('fs');
 const config = require('./config');
 
 const app = express();
-const port = 3005;
+const port = process.env.PRODUCT_SERVER_PORT || 3006;
 
 // Import cleanup service
 const HTMLCleanupService = require('./html-cleanup-service');
@@ -52,6 +52,22 @@ function parseFilename(filename) {
     }
 }
 
+// Root endpoint
+app.get('/', (req, res) => {
+    res.send(`
+        <html>
+        <head><title>Product List Server</title></head>
+        <body style="font-family: Arial; padding: 40px; text-align: center;">
+            <h1>🛍️ WhatsApp B2B Product Server</h1>
+            <p>Bu server WhatsApp üzerinden gelen ürün sorgularını işler.</p>
+            <p>Ürün listesi linki almak için WhatsApp'tan ürün araması yapın.</p>
+            <hr>
+            <p>Status: ✅ Aktif | Port: ${process.env.PRODUCT_SERVER_PORT || 3006}</p>
+        </body>
+        </html>
+    `);
+});
+
 // MIGRATION: Static file serving endpoint (replaces database session endpoint)
 app.get('/products/:filename', async (req, res) => {
     try {
@@ -59,7 +75,7 @@ app.get('/products/:filename', async (req, res) => {
         
         // Check if it's a static HTML file request
         if (filename.endsWith('.html') && filename.startsWith('products_')) {
-            const filePath = path.join(__dirname, 'product-pages', filename);
+            const filePath = path.join(__dirname, '..', '..', 'product-pages', filename);
             
             // Check if file exists
             if (!fs.existsSync(filePath)) {
@@ -89,57 +105,13 @@ app.get('/products/:filename', async (req, res) => {
             return res.sendFile(filePath);
         }
         
-        // DYNAMIC SESSION: Handle session ID format (read from PostgreSQL)
-        else {
-            const sessionId = filename;
-            console.log(`[DYNAMIC SESSION] Loading session: ${sessionId}`);
-            
-            try {
-                // PostgreSQL connection to read session data
-                const { Pool } = require('pg');
-                const pool = new Pool({
-                    host: process.env.DB_HOST || 'localhost',
-                    database: process.env.DB_NAME || 'eticaret_db', 
-                    user: process.env.DB_USER || 'postgres',
-                    password: process.env.DB_PASSWORD || 'masterkey',
-                    port: process.env.DB_PORT || 5432
-                });
-                
-                const result = await pool.query(
-                    'SELECT product_list, product_count, message_id, whatsapp_number FROM temp_product_sessions WHERE session_id = $1',
-                    [sessionId]
-                );
-                
-                if (result.rows.length === 0) {
-                    return res.status(404).send(`
-                        <html><body>
-                            <h2>Session bulunamadı</h2>
-                            <p>Bu link geçersiz veya süresi dolmuş olabilir.</p>
-                            <p>Lütfen yeni bir arama yapın.</p>
-                        </body></html>
-                    `);
-                }
-                
-                const sessionData = result.rows[0];
-                const productList = sessionData.product_list; // Already parsed by pg library
-                const products = productList.products || [];
-                
-                // Generate HTML response
-                const html = generateProductListHTML(products, sessionData.message_id, sessionId);
-                
-                await pool.end();
-                return res.send(html);
-                
-            } catch (error) {
-                console.error('[DB SESSION ERROR]', error);
-                return res.status(500).send(`
-                    <html><body>
-                        <h2>Veri yükleme hatası</h2>
-                        <p>Session verisi okunamadı. Lütfen yeni bir arama yapın.</p>
-                    </body></html>
-                `);
-            }
-        }
+        // If not HTML file, return 404
+        return res.status(404).send(`
+            <html><body>
+                <h2>Sayfa bulunamadı</h2>
+                <p>Geçersiz dosya formatı.</p>
+            </body></html>
+        `);
         
     } catch (error) {
         console.error('[SERVER ERROR]', error);
@@ -192,7 +164,7 @@ app.post('/select-product', express.json(), async (req, res) => {
         const axios = require('axios');
         
         try {
-            const swarmResponse = await axios.post('http://localhost:3007/process-message', {
+            const swarmResponse = await axios.post(`http://localhost:${process.env.SWARM_SERVER_PORT || 3008}/process-message`, {
                 message: urunSeciidiMessage,
                 whatsapp_number: whatsappNumber
             });

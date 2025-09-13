@@ -28,7 +28,7 @@ client.on('qr', (qr) => {
 // Bağlantı başarılı
 client.on('ready', () => {
     console.log('WhatsApp Web bağlantısı başarılı!');
-    console.log('OpenAI Swarm sistem aktif: http://localhost:3007');
+    console.log(`OpenAI Swarm sistem aktif: http://localhost:${process.env.SWARM_SERVER_PORT || 3008}`);
 });
 
 // Gelen mesajları dinle ve Swarm sistemine gönder
@@ -50,8 +50,8 @@ client.on('message', async (message) => {
         console.log(`[Swarm] Sending - userId: ${userId}, message: ${body}`);
         
         try {
-            // Call OpenAI Swarm 5-Agent system on port 3007
-            const response = await axios.post('http://localhost:3007/process-message', {
+            // Call OpenAI Swarm 5-Agent system
+            const response = await axios.post(`http://localhost:${process.env.SWARM_SERVER_PORT || 3008}/process-message`, {
                 message: body,
                 whatsapp_number: userId
             });
