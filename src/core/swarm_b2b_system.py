@@ -457,7 +457,7 @@ def valve_search_tool(query: str) -> str:
             
             # HTML dosyası oluştur - PLAN'A GÖRE
             import os
-            html_dir = "C:/projects/Asistan/product-pages"
+            html_dir = os.getenv('PRODUCT_PAGES_DIR', 'C:/projects/WhatsAppB2B-Clean/product-pages')
             os.makedirs(html_dir, exist_ok=True)
             
             # Dosya adı formatı: products_{whatsapp}_{session}_{timestamp}.html
@@ -479,7 +479,7 @@ def valve_search_tool(query: str) -> str:
             in_stock_count = len([p for p in products if p['stock'] > 0])
             
             # Liste linki response (Tunnel URL kullan)
-            tunnel_url = "https://nobody-pair-voices-added.trycloudflare.com"
+            tunnel_url = "https://converted-performing-portal-dispatch.trycloudflare.com"
             response = f"URUN BULUNDU: '{query}' icin {count} valf mevcut!\n\n"
             response += f"Toplam: {count} valf\n"
             response += f"Stokta: {in_stock_count} valf\n\n"
@@ -527,7 +527,7 @@ def product_search_tool(query: str) -> str:
                 
                 # HTML dosyası oluştur - PLAN'A GÖRE
                 import os
-                html_dir = "C:/projects/Asistan/product-pages"
+                html_dir = os.getenv('PRODUCT_PAGES_DIR', 'C:/projects/WhatsAppB2B-Clean/product-pages')
                 os.makedirs(html_dir, exist_ok=True)
                 
                 # Dosya adı formatı: products_{whatsapp}_{session}_{timestamp}.html
@@ -549,7 +549,7 @@ def product_search_tool(query: str) -> str:
                 in_stock_count = len([p for p in all_products if p['stock'] > 0])
                 
                 # Liste linki response (Tunnel URL kullan)
-                tunnel_url = "https://nobody-pair-voices-added.trycloudflare.com"
+                tunnel_url = "https://converted-performing-portal-dispatch.trycloudflare.com"
                 response = f"URUN BULUNDU: '{query}' icin {count} urun mevcut!\n\n"
                 response += f"Toplam: {count} urun\n"
                 response += f"Stokta: {in_stock_count} urun\n\n"
@@ -1179,6 +1179,7 @@ intent_analyzer = Agent(
     instructions="""Sen bir Niyet Analizcisisin. Müşteri mesajlarını kategorize et:
 
 **Kategoriler**:
+- SELAMLAŞMA: "merhaba", "selam", "günaydın", "iyi günler", "hello", "hi" -> transfer_to_customer_manager()
 - URUN_ARAMA: "100x200 silindir", "filtre ariyorum", "ürün arıyorum", "valf arıyorum", "5/2 valf", "3/2 valf", "pnömatik valf" -> transfer_to_product_specialist()
 - ÜRÜN_SEÇİLDİ: "ÜRÜN_SEÇİLDİ: [kod] - [isim] - [fiyat] TL" (HTML'den gelen) -> transfer_to_sales_expert()
 - URUN_SECIMI: "3. ürünü seç", "bu ürünün fiyatı", "ürünü seçtim", "Kod XXX seçtim", "fiyat nedir" -> transfer_to_sales_expert()  
@@ -1211,15 +1212,25 @@ TÜRKÇE yanıt ver!""",
 customer_manager = Agent(
     name="Customer Manager",
     model=OPENROUTER_MODEL,
-    instructions="""You are Customer Manager. Check customer information.
+    instructions="""Sen bir Müşteri Hizmetleri Temsilcisisin. B2B satış asistanı olarak müşterilere yardımcı ol.
 
-**Tasks**:
-1. Check customer info (customer_check_tool)
-2. Report credit limit and risk score
-3. Warning if customer inactive
-4. After done: transfer_back_to_intent_analyzer()
+**Görevlerin**:
+1. Selamlaşmalara samimi ve profesyonel yanıt ver
+2. Müşteri bilgilerini kontrol et (customer_check_tool)
+3. Ürün araması için Product Specialist'e yönlendir
+4. Genel sorulara yardımcı ol
 
-Only handle customer info, no product search!""",
+**Selamlaşma Yanıtları**:
+- "Merhaba" -> "Merhaba! Size nasıl yardımcı olabilirim? Ürün araması mı yapmak istersiniz?"
+- "Günaydın" -> "Günaydın! Hoş geldiniz. Hangi ürünü arıyorsunuz?"
+- Diğer selamlar -> "Hoş geldiniz! Size nasıl yardımcı olabilirim?"
+
+**Önemli**: 
+- Daima Türkçe yanıt ver
+- Müşteriye yardımcı olmaya hazır olduğunu göster
+- Ürün araması için yönlendirme yap
+
+Yanıtından sonra transfer_back_to_intent_analyzer() kullan.""",
     functions=[customer_check_tool, transfer_back_to_intent_analyzer]
 )
 
