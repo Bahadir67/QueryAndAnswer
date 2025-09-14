@@ -157,14 +157,15 @@ app.post('/select-product', express.json(), async (req, res) => {
         }
         
         // Convert HTML product selection to ÜRÜN_SEÇİLDİ format for Swarm system
-        const urunSeciidiMessage = `ÜRÜN_SEÇİLDİ: ${product.code} - ${product.name} - ${product.price} TL`;
-        console.log(`[FORMAT CONVERSION] Original: ${message} → ÜRÜN_SEÇİLDİ: ${urunSeciidiMessage}`);
+        // Use URUN_SECILDI instead of ÜRÜN_SEÇİLDİ to avoid encoding issues
+        const urunSeciidiMessage = `URUN_SECILDI: ${product.code} - ${product.name} - ${product.price} TL`;
+        console.log(`[FORMAT CONVERSION] Original: ${message} → URUN_SECILDI: ${urunSeciidiMessage}`);
         
         // Send ÜRÜN_SEÇİLDİ intent to Swarm system
         const axios = require('axios');
         
         try {
-            const swarmResponse = await axios.post(`http://localhost:${process.env.SWARM_SERVER_PORT || 3008}/process-message`, {
+            const swarmResponse = await axios.post(`http://localhost:${process.env.SWARM_SERVER_PORT || 3007}/process-message`, {
                 message: urunSeciidiMessage,
                 whatsapp_number: whatsappNumber
             });
@@ -174,6 +175,9 @@ app.post('/select-product', express.json(), async (req, res) => {
                 const responseMessage = swarmResponse.data.response || swarmResponse.data.message || "Ürün seçimi başarılı";
                 
                 console.log(`[SWARM RESPONSE] ${whatsappNumber}: ${responseMessage.substring(0, 100)}...`);
+                console.log(`[SENDING TO WHATSAPP] URL: http://localhost:3001/send-message`);
+                console.log(`[SENDING TO WHATSAPP] To: ${whatsappNumber}`);
+                console.log(`[SENDING TO WHATSAPP] Message: ${responseMessage.substring(0, 200)}`);
                 
                 // WhatsApp'a mesaj gönder
                 try {
@@ -182,9 +186,11 @@ app.post('/select-product', express.json(), async (req, res) => {
                         message: responseMessage
                     });
                     
+                    console.log(`[WHATSAPP RESPONSE] ${JSON.stringify(whatsappResponse.data)}`);
                     console.log(`[WHATSAPP SENT] ${whatsappNumber}: Message sent successfully`);
                 } catch (whatsappError) {
                     console.error(`[WHATSAPP ERROR] ${whatsappNumber}:`, whatsappError.message);
+                    console.error(`[WHATSAPP ERROR DETAILS]`, whatsappError.response?.data);
                 }
                 
                 res.json({ 

@@ -52,11 +52,24 @@ class DatabaseManager:
         self.connection = None
         self.connect()
         
+        # SQL fonksiyonlarını kontrol et ve yükle
+        self.check_sql_functions()
+        
         # OpenAI client for parameter extraction
         self.openai_client = openai.OpenAI(
             base_url="https://openrouter.ai/api/v1",
             api_key=os.getenv('OPENROUTER_API_KEY')
         )
+    
+    def check_sql_functions(self):
+        """SQL fonksiyonlarını kontrol et ve eksik olanları yükle"""
+        try:
+            from sql_functions_manager import SQLFunctionsManager
+            manager = SQLFunctionsManager(self.connection)
+            manager.check_and_load_all_functions()
+        except Exception as e:
+            print(f"[SQL WARNING] Fonksiyon kontrolü yapılamadı: {e}")
+            # Hata olsa bile devam et
     
     def connect(self):
         """Veritabanına bağlan"""

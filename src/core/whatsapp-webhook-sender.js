@@ -11,11 +11,20 @@ app.use(express.json());
 // WhatsApp Client oluştur
 const client = new Client({
     authStrategy: new LocalAuth({
-        dataPath: config.paths.whatsappSessions
+        dataPath: config.paths.whatsappSessions,
+        clientId: 'client-one'
     }),
     puppeteer: {
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        headless: false,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--disable-gpu'
+        ]
     }
 });
 
@@ -28,11 +37,12 @@ client.on('qr', (qr) => {
 // Bağlantı başarılı
 client.on('ready', () => {
     console.log('WhatsApp Web bağlantısı başarılı!');
-    console.log(`OpenAI Swarm sistem aktif: http://localhost:${process.env.SWARM_SERVER_PORT || 3008}`);
+    console.log(`OpenAI Swarm sistem aktif: http://localhost:${process.env.SWARM_SERVER_PORT || 3007}`);
 });
 
 // Gelen mesajları dinle ve Swarm sistemine gönder
 client.on('message', async (message) => {
+    console.log(`[DEBUG] Mesaj alındı - From: ${message.from}, Body: ${message.body}`);
     try {
         const userId = message.from;
         const body = message.body;
@@ -51,7 +61,7 @@ client.on('message', async (message) => {
         
         try {
             // Call OpenAI Swarm 5-Agent system
-            const response = await axios.post(`http://localhost:${process.env.SWARM_SERVER_PORT || 3008}/process-message`, {
+            const response = await axios.post(`http://localhost:${process.env.SWARM_SERVER_PORT || 3007}/process-message`, {
                 message: body,
                 whatsapp_number: userId
             });
@@ -92,6 +102,21 @@ client.on('message', async (message) => {
 // Bağlantı kesildi
 client.on('disconnected', (reason) => {
     console.log('WhatsApp bağlantısı kesildi:', reason);
+});
+
+// Authentication failure
+client.on('auth_failure', msg => {
+    console.error('AUTHENTICATION HATASI', msg);
+});
+
+// Loading screen
+client.on('loading_screen', (percent, message) => {
+    console.log('LOADING SCREEN', percent, message);
+});
+
+// Authenticated
+client.on('authenticated', () => {
+    console.log('AUTHENTICATED - Kimlik doğrulandı');
 });
 
 // Swarm sisteminden gelen yanıtları al ve WhatsApp'a gönder
@@ -135,7 +160,11 @@ app.listen(REPLY_PORT, () => {
 });
 
 // Client'ı başlat
-client.initialize();
+client.initialize().catch(err => {
+    console.error('WhatsApp başlatma hatası:', err);
+});
 
 console.log('WhatsApp Web.js başlatılıyor...');
 console.log('OpenAI Swarm sistemine bağlanılıyor...');
+console.log('Session path:', config.paths.whatsappSessions);
+console.log('Puppeteer headless:', false);

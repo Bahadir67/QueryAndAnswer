@@ -38,6 +38,7 @@ try:
     import os
     env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env')
     load_dotenv(env_path)
+    print(f"[ENV] TUNNEL_URL: {os.getenv('TUNNEL_URL', 'Not set')}")
 except ImportError:
     print(" python-dotenv not found, using system environment variables")
     pass
@@ -50,6 +51,7 @@ from database_tools_fixed import db
 # Global context for WhatsApp number and selected product
 current_whatsapp_context = {}
 selected_product_context = {}
+product_list_sessions = {}  # Product list sessions for HTML generation
 
 # OpenRouter Custom Client - Swarm ile uyumlu
 import openai
@@ -71,16 +73,20 @@ print(f"[Swarm] Model: {OPENROUTER_MODEL}")
 
 def parse_product_selection_message(message: str) -> dict:
     """
-    Parse ÜRÜN_SEÇİLDİ message format: 'ÜRÜN_SEÇİLDİ: [code] - [name] - [price] TL'
+    Parse ÜRÜN_SEÇİLDİ/URUN_SECILDI message format: 'ÜRÜN_SEÇİLDİ: [code] - [name] - [price] TL'
     Returns: {'success': bool, 'product_code': str, 'product_name': str, 'price': float}
     """
     try:
         # Expected format: "ÜRÜN_SEÇİLDİ: 17A0040 - Hidrolik Silindir 100x200 - 1250.00 TL"
-        if not message.startswith("ÜRÜN_SEÇİLDİ:"):
+        # Also accept: "URUN_SECILDI: 17A0040 - Hidrolik Silindir 100x200 - 1250.00 TL"
+        if not (message.startswith("ÜRÜN_SEÇİLDİ:") or message.startswith("URUN_SECILDI:")):
             return {'success': False, 'error': 'Invalid format'}
             
-        # Remove "ÜRÜN_SEÇİLDİ:" prefix and strip
-        content = message.replace("ÜRÜN_SEÇİLDİ:", "").strip()
+        # Remove prefix and strip
+        if message.startswith("ÜRÜN_SEÇİLDİ:"):
+            content = message.replace("ÜRÜN_SEÇİLDİ:", "").strip()
+        else:
+            content = message.replace("URUN_SECILDI:", "").strip()
         
         # Split by " - " to get [code, name, price_with_TL]
         parts = content.split(" - ")
@@ -340,27 +346,135 @@ def generate_product_html(products, query, html_filename):
     
     <script>
         function selectProduct(code, name, price) {{
-            // Send to endpoint
+            // Create WhatsApp message
+            var whatsappMsg = "URUN_SECILDI: " + code + " - " + name + " - " + price + " TL";
+            
+            // Try to send via fetch
             fetch('/select-product', {{
                 method: 'POST',
                 headers: {{ 'Content-Type': 'application/json' }},
                 body: JSON.stringify({{ 
-                    message: "ÜRÜN_SEÇİLDİ: " + code + " - " + name + " - " + price + " TL",
+                    message: whatsappMsg,
                     sessionId: '{html_filename}',
                     productCode: code,
                     productName: name,
                     productPrice: price
                 }})
             }}).then(response => {{
-                if (response.ok) {{
-                    alert('Ürün seçildi! WhatsApp\\'a dönebilirsiniz, geri tuşuna basarak.');
-                }} else {{
-                    alert('Seçim başarısız. WhatsApp\\'a dönebilirsiniz, geri tuşuna basarak.');
-                }}
+                // Fetch success - do nothing here, let clipboard handle it
             }}).catch(error => {{
-                console.error('Selection error:', error);
-                alert('Ürün seçimi için WhatsApp üzerinden "' + code + '" yazın.');
+                // Fetch blocked by ad blocker - show copy dialog
+                console.log('Fetch blocked, showing copy dialog');
             }});
+            
+            // Silent clipboard copy and show overlay popup
+            navigator.clipboard.writeText(whatsappMsg).then(function() {{
+                showSuccessOverlay();
+            }}).catch(function(err) {{
+                showSuccessOverlay();
+            }});
+        }}
+
+        function showSuccessOverlay() {{
+            // Create overlay background
+            var overlay = document.createElement('div');
+            overlay.style.position = 'fixed';
+            overlay.style.top = '0';
+            overlay.style.left = '0';
+            overlay.style.width = '100%';
+            overlay.style.height = '100%';
+            overlay.style.backgroundColor = 'rgba(0,0,0,0.7)';
+            overlay.style.zIndex = '10000';
+            overlay.style.display = 'flex';
+            overlay.style.alignItems = 'center';
+            overlay.style.justifyContent = 'center';
+            overlay.style.opacity = '0';
+            overlay.style.transition = 'opacity 0.3s ease';
+            
+            // Create popup box
+            var popup = document.createElement('div');
+            popup.style.backgroundColor = 'white';
+            popup.style.borderRadius = '12px';
+            popup.style.padding = '30px';
+            popup.style.maxWidth = '350px';
+            popup.style.width = '90%';
+            popup.style.textAlign = 'center';
+            popup.style.boxShadow = '0 10px 30px rgba(0,0,0,0.3)';
+            popup.style.transform = 'scale(0.9)';
+            popup.style.transition = 'transform 0.3s ease';
+            
+            // Create success icon
+            var icon = document.createElement('div');
+            icon.innerHTML = '✅';
+            icon.style.fontSize = '48px';
+            icon.style.marginBottom = '15px';
+            
+            // Create title
+            var title = document.createElement('h3');
+            title.innerHTML = 'Ürün Seçildi!';
+            title.style.color = '#2c5aa0';
+            title.style.margin = '0 0 15px 0';
+            title.style.fontSize = '22px';
+            title.style.fontWeight = 'bold';
+            
+            // Create message
+            var message = document.createElement('p');
+            message.innerHTML = '👆 Back tuşuna basarak<br>WhatsApp\\'a dönebilirsiniz';
+            message.style.color = '#666';
+            message.style.margin = '0 0 20px 0';
+            message.style.fontSize = '16px';
+            message.style.lineHeight = '1.5';
+            
+            // Create close button
+            var closeBtn = document.createElement('button');
+            closeBtn.innerHTML = 'Tamam';
+            closeBtn.style.backgroundColor = '#2c5aa0';
+            closeBtn.style.color = 'white';
+            closeBtn.style.border = 'none';
+            closeBtn.style.borderRadius = '6px';
+            closeBtn.style.padding = '12px 24px';
+            closeBtn.style.fontSize = '16px';
+            closeBtn.style.cursor = 'pointer';
+            closeBtn.style.fontWeight = 'bold';
+            closeBtn.style.transition = 'background-color 0.2s ease';
+            
+            // Hover effect for button
+            closeBtn.onmouseover = function() {{ this.style.backgroundColor = '#1a4480'; }};
+            closeBtn.onmouseout = function() {{ this.style.backgroundColor = '#2c5aa0'; }};
+            
+            // Assemble popup
+            popup.appendChild(icon);
+            popup.appendChild(title);
+            popup.appendChild(message);
+            popup.appendChild(closeBtn);
+            overlay.appendChild(popup);
+            
+            // Add to page
+            document.body.appendChild(overlay);
+            
+            // Animate in
+            setTimeout(function() {{
+                overlay.style.opacity = '1';
+                popup.style.transform = 'scale(1)';
+            }}, 50);
+            
+            // Close button functionality
+            closeBtn.onclick = function() {{
+                overlay.style.opacity = '0';
+                popup.style.transform = 'scale(0.9)';
+                setTimeout(function() {{
+                    if (document.body.contains(overlay)) {{
+                        document.body.removeChild(overlay);
+                    }}
+                }}, 300);
+            }};
+            
+            // Close on overlay click
+            overlay.onclick = function(e) {{
+                if (e.target === overlay) {{
+                    closeBtn.onclick();
+                }}
+            }};
         }}
     </script>
 </body>
@@ -457,14 +571,14 @@ def valve_search_tool(query: str) -> str:
             
             # HTML dosyası oluştur - PLAN'A GÖRE
             import os
-            html_dir = os.getenv('PRODUCT_PAGES_DIR', 'C:/projects/WhatsAppB2B-Clean/product-pages')
+            html_dir = "C:/projects/Asistan/product-pages"
             os.makedirs(html_dir, exist_ok=True)
             
             # Dosya adı formatı: products_{whatsapp}_{session}_{timestamp}.html
             timestamp = str(int(time.time() * 1000))
             whatsapp_clean = actual_whatsapp.replace('@c.us', '').replace('+', '')
             html_filename = f"products_{whatsapp_clean}_{session_id}_{timestamp}.html"
-            html_path = os.path.join(html_dir, html_filename)
+            html_path = f"{html_dir}/{html_filename}"
             
             # HTML içeriği oluştur (products değişkenini kullan, all_products değil)
             html_content = generate_product_html(products, query, html_filename)
@@ -479,7 +593,7 @@ def valve_search_tool(query: str) -> str:
             in_stock_count = len([p for p in products if p['stock'] > 0])
             
             # Liste linki response (Tunnel URL kullan)
-            tunnel_url = os.getenv('TUNNEL_URL', 'https://incomplete-travelling-bye-script.trycloudflare.com')
+            tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3006')
             response = f"URUN BULUNDU: '{query}' icin {count} valf mevcut!\n\n"
             response += f"Toplam: {count} valf\n"
             response += f"Stokta: {in_stock_count} valf\n\n"
@@ -493,6 +607,147 @@ def valve_search_tool(query: str) -> str:
         
     except Exception as e:
         return f"Valf arama hatasi: {str(e)}"
+
+
+def air_preparation_search_tool(query: str) -> str:
+    """Şartlandırıcı, Regülatör, Yağlayıcı arama - 4 parametreli SQL fonksiyonu kullanır"""
+    import uuid
+    import re
+    
+    try:
+        global current_whatsapp_context, product_list_sessions
+        
+        # Query'yi Türkçe büyük harfe çevir
+        query_upper = query.upper().replace('İ', 'I').replace('Ğ', 'G')
+        
+        # Parametreleri parse et
+        unit_type = None
+        connection_size = None
+        keywords = None
+        
+        # 1. Bağlantı boyutu algılama (1/8, 1/4, 1/2, 3/8, 3/4)
+        size_patterns = ['1/8', '1/4', '1/2', '3/8', '3/4', '1"']
+        for size in size_patterns:
+            if size in query_upper:
+                connection_size = size
+                # Query'den boyutu çıkar
+                query_upper = query_upper.replace(size, '').strip()
+                break
+        
+        # 2. Tip algılama (MR, FRY, MFRY, Y vb.)
+        if re.search(r'\bMR\b', query_upper):
+            unit_type = 'MR'
+            query_upper = re.sub(r'\bMR\b', '', query_upper).strip()
+        elif 'FRY' in query_upper:
+            unit_type = 'FRY'
+            query_upper = query_upper.replace('FRY', '').strip()
+        elif 'MFRY' in query_upper or re.search(r'M\(FR\)Y', query_upper):
+            unit_type = 'MFRY'
+            query_upper = re.sub(r'MFRY|M\(FR\)Y', '', query_upper).strip()
+        elif 'MFR' in query_upper or re.search(r'M\(FR\)', query_upper):
+            unit_type = 'MFR'
+            query_upper = re.sub(r'MFR|M\(FR\)', '', query_upper).strip()
+        elif re.search(r'\bY\b', query_upper):
+            unit_type = 'Y'
+            query_upper = re.sub(r'\bY\b', '', query_upper).strip()
+        
+        # 3. Anahtar kelime algılama (REGÜLATÖR, YAĞLAYICI vb.)
+        if 'REGULATOR' in query_upper or 'REGULATÖR' in query_upper or 'REGÜLATOR' in query_upper or 'REGÜLATÖR' in query_upper:
+            keywords = 'REGÜLATÖR'
+        elif 'YAGLAYICI' in query_upper or 'YAĞLAYICI' in query_upper:
+            keywords = 'YAĞLAYICI'
+        elif 'SARTLANDIRICI' in query_upper or 'ŞARTLANDIRICI' in query_upper:
+            keywords = 'ŞARTLANDIRICI'
+        elif 'FILTRE' in query_upper or 'FILTER' in query_upper:
+            keywords = 'FILTRE'
+        elif query_upper and not unit_type:  # Geriye kalan kelime varsa
+            keywords = query_upper
+        
+        print(f"[AIR_SEARCH] Query: {query} -> Type: {unit_type}, Size: {connection_size}, Keywords: {keywords}")
+        
+        # SQL fonksiyonunu 4 parametreyle çağır
+        # find_air_preparation_units(p_query, p_unit_type, p_connection_size, p_keywords)
+        sql_query = """
+        SELECT * FROM find_air_preparation_units(%s, %s, %s, %s)
+        """
+        
+        cursor = db.connection.cursor()
+        cursor.execute(sql_query, (query, unit_type, connection_size, keywords))
+        products = cursor.fetchall()
+        cursor.close()
+        
+        if products:
+            count = len(products)
+            in_stock = sum(1 for p in products if p[4] > 0)  # stock_quantity index
+            
+            # Session'a kaydet
+            session_id = str(uuid.uuid4())[:8]
+            product_list_sessions[session_id] = {
+                'products': [
+                    {
+                        'id': p[0],
+                        'code': p[1],
+                        'name': p[2],
+                        'price': float(p[3]) if p[3] else 0,
+                        'stock': p[4],
+                        'unit_type': p[5],
+                        'connection_size': p[6],
+                        'description': p[7]
+                    }
+                    for p in products[:50]  # İlk 50 ürün
+                ],
+                'query': query,
+                'whatsapp_number': current_whatsapp_context.get('whatsapp_number', 'unknown')
+            }
+            
+            # HTML dosyası oluştur
+            whatsapp_number = current_whatsapp_context.get('whatsapp_number', 'unknown').replace('@c.us', '')
+            timestamp = int(time.time() * 1000)
+            filename = f"products_{whatsapp_number}_{session_id}_{timestamp}.html"
+            
+            # HTML içeriği oluştur
+            # generate_product_html kullan (onclick versiyonu - buton yok)
+            formatted_products = [
+                {
+                    "code": p[1],
+                    "name": p[2],
+                    "price": p[3],
+                    "stock": p[4]
+                }
+                for p in products
+            ]
+            html_content = generate_product_html(formatted_products, query, filename)
+            
+            # HTML dosyasını kaydet
+            product_pages_dir = os.getenv('PRODUCT_PAGES_DIR', 'C:/projects/WhatsAppB2B-Clean/product-pages')
+            os.makedirs(product_pages_dir, exist_ok=True)
+            filepath = os.path.join(product_pages_dir, filename)
+            
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+            
+            print(f"[HTML] Created: {filename}")
+            
+            # HTML listesi için URL (env'den al)
+            tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3006')
+            list_url = f"{tunnel_url}/products/{filename}"
+            
+            response = f"""URUN BULUNDU: '{query}' icin {count} urun mevcut!
+
+Toplam: {count} urun
+Stokta: {in_stock} urun
+
+URUN LISTESI: {list_url}
+
+Musteriye bu linki gonder! Link'ten urun secimi yapabilir."""
+            
+            return response
+        else:
+            return f"'{query}' için şartlandırıcı/regülatör/yağlayıcı bulunamadı."
+            
+    except Exception as e:
+        print(f"[ERROR] air_preparation_search_tool: {e}")
+        return f"Şartlandırıcı arama hatası: {str(e)}"
 
 def product_search_tool(query: str) -> str:
     """OPTIMIZE Ürün ara - Session'a kaydet ve liste linki oluştur"""
@@ -534,7 +789,7 @@ def product_search_tool(query: str) -> str:
                 timestamp = str(int(time.time() * 1000))
                 whatsapp_clean = actual_whatsapp.replace('@c.us', '').replace('+', '')
                 html_filename = f"products_{whatsapp_clean}_{session_id}_{timestamp}.html"
-                html_path = os.path.join(html_dir, html_filename)
+                html_path = f"{html_dir}/{html_filename}"
                 
                 # HTML içeriği oluştur
                 html_content = generate_product_html(all_products, query, html_filename)
@@ -549,7 +804,7 @@ def product_search_tool(query: str) -> str:
                 in_stock_count = len([p for p in all_products if p['stock'] > 0])
                 
                 # Liste linki response (Tunnel URL kullan)
-                tunnel_url = os.getenv('TUNNEL_URL', 'https://incomplete-travelling-bye-script.trycloudflare.com')
+                tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3006')
                 response = f"URUN BULUNDU: '{query}' icin {count} urun mevcut!\n\n"
                 response += f"Toplam: {count} urun\n"
                 response += f"Stokta: {in_stock_count} urun\n\n"
@@ -732,43 +987,6 @@ def create_order_confirmation_message(order_number: str, order_data: dict, total
     except Exception as e:
         return f"SIPARIS ONAYLANDI: {order_number} - Detay mesajı oluşturulurken hata: {str(e)}"
 
-def get_cancellation_history(whatsapp_number: str, limit: int = 5) -> str:
-    """İptal edilen siparişlerin geçmişini getir"""
-    try:
-        cursor = db.connection.cursor()
-        cursor.execute("""
-            SELECT oc.order_number, oc.cancelled_at, oc.reason, oc.refund_amount, oc.previous_status
-            FROM order_cancellations oc
-            WHERE oc.whatsapp_number = %s
-            ORDER BY oc.cancelled_at DESC
-            LIMIT %s
-        """, [whatsapp_number, limit])
-        
-        cancellations = cursor.fetchall()
-        cursor.close()
-        
-        if not cancellations:
-            return " İPTAL GEÇMİŞİ BOŞ: Henüz iptal edilmiş siparişiniz bulunmuyor."
-        
-        response = f" SON {len(cancellations)} İPTAL EDİLEN SİPARİŞ:\n"
-        response += "="*40 + "\n\n"
-        
-        for i, (order_num, cancelled_at, reason, refund_amount, prev_status) in enumerate(cancellations, 1):
-            # Tarih formatı
-            date_str = cancelled_at.strftime('%d/%m/%Y %H:%M') if cancelled_at else 'Bilinmiyor'
-            
-            response += f"{i}. {order_num}\n"
-            response += f"    İptal Tarihi: {date_str}\n"
-            response += f"    Sebep: {reason}\n"
-            response += f"    Önceki Durum: {prev_status}\n"
-            response += f"   [PRICE] İade: {refund_amount:.2f} TL\n\n"
-        
-        response += " Yeni sipariş vermek ister misiniz?"
-        return response
-        
-    except Exception as e:
-        return f" İPTAL GEÇMİŞİ HATASI: {str(e)}"
-
 def get_order_history(whatsapp_number: str, limit: int = 5) -> str:
     """Müşterinin sipariş geçmişini getir"""
     try:
@@ -874,146 +1092,60 @@ def get_order_details(whatsapp_number: str, order_number: str) -> str:
     except Exception as e:
         return f"SIPARIS DETAY HATASI: {str(e)}"
 
-def cancel_order(whatsapp_number: str, order_number: str = "", reason: str = "Müşteri talebi") -> str:
-    """Gelişmiş sipariş iptal sistemi - İptal geçmişi ve bildirimleri ile"""
+def cancel_order(whatsapp_number: str, order_number: str = "") -> str:
+    """Sipariş iptal et - Single product workflow için basitleştirilmiş"""
     try:
         cursor = db.connection.cursor()
         
-        # İptal edilebilir durumlar
-        cancellable_statuses = ['draft', 'pending', 'awaiting_payment', 'confirmed']
-        
         if order_number:
-            # Özel iptal komutları kontrolü
-            if order_number.lower() == 'son':
-                # Son siparişi iptal et
-                cursor.execute("""
-                    SELECT id, order_number, status, total_amount
-                    FROM orders 
-                    WHERE whatsapp_number = %s
-                    AND status = ANY(%s)
-                    ORDER BY created_at DESC
-                    LIMIT 1
-                """, [whatsapp_number, cancellable_statuses])
-                
-                order = cursor.fetchone()
-                if not order:
-                    cursor.close()
-                    return " İPTAL EDİLECEK SİPARİŞ YOK: İptal edilebilir durumda siparişiniz bulunmuyor."
-                
-                order_id, order_number, status, total_amount = order
-                
-            elif order_number.lower() == 'hepsi':
-                # Tüm iptal edilebilir siparişleri iptal et
-                cursor.execute("""
-                    SELECT COUNT(*), SUM(total_amount)
-                    FROM orders 
-                    WHERE whatsapp_number = %s
-                    AND status = ANY(%s)
-                """, [whatsapp_number, cancellable_statuses])
-                
-                count, total = cursor.fetchone()
-                if count == 0:
-                    cursor.close()
-                    return " İPTAL EDİLECEK SİPARİŞ YOK: İptal edilebilir durumda siparişiniz bulunmuyor."
-                
-                # Tüm siparişleri iptal et
-                cursor.execute("""
-                    UPDATE orders 
-                    SET status = 'cancelled', 
-                        cancelled_at = CURRENT_TIMESTAMP,
-                        cancellation_reason = %s,
-                        cancelled_by = %s
-                    WHERE whatsapp_number = %s 
-                    AND status = ANY(%s)
-                    RETURNING order_number
-                """, [reason, whatsapp_number, whatsapp_number, cancellable_statuses])
-                
-                cancelled_orders = cursor.fetchall()
-                db.connection.commit()
-                cursor.close()
-                
-                # İptal listesi oluştur
-                response = f" {count} SİPARİŞ İPTAL EDİLDİ!\n"
-                response += "="*35 + "\n\n"
-                for (cancelled_order,) in cancelled_orders:
-                    response += f"[ERROR] {cancelled_order} - İptal edildi\n"
-                response += f"\n[PRICE] Toplam Tutar: {total:.2f} TL\n"
-                response += " İade süreci başlatıldı (3-5 iş günü)"
-                
-                return response
-                
-            else:
-                # Belirli sipariş numarasını iptal et
-                cursor.execute("""
-                    SELECT id, status, total_amount, created_at
-                    FROM orders 
-                    WHERE whatsapp_number = %s AND order_number = %s
-                """, [whatsapp_number, order_number])
-                
-                order = cursor.fetchone()
-                if not order:
-                    cursor.close()
-                    return f" SİPARİŞ BULUNAMADI: {order_number}\nLütfen geçerli bir sipariş numarası girin."
-                
-                order_id, status, total_amount, created_at = order
-                
-                # İptal edilebilirlik kontrolü
-                if status == 'cancelled':
-                    cursor.close()
-                    return f" ZATEN İPTAL EDİLMİŞ: {order_number}\nBu sipariş daha önce iptal edilmiş."
-                
-                if status not in cancellable_statuses:
-                    cursor.close()
-                    return f" İPTAL EDİLEMEZ: {order_number}\nDurum: {status}\n\nSadece onay bekleyen siparişler iptal edilebilir."
-                
-                # 24 saat kuralı (opsiyonel)
-                from datetime import datetime, timedelta
-                if created_at < datetime.now() - timedelta(hours=48):
-                    cursor.close()  
-                    return f" SÜRESİ GEÇMİŞ: {order_number}\n48 saatten eski siparişler iptal edilemez.\n\nMüşteri hizmetleri: 0530 689 7885"
+            # Belirli sipariş numarasını iptal et
+            cursor.execute("""
+                SELECT id, status FROM orders 
+                WHERE whatsapp_number = %s AND order_number = %s
+            """, [whatsapp_number, order_number])
             
-            # İptal işlemini gerçekleştir
+            order = cursor.fetchone()
+            if not order:
+                cursor.close()
+                return f"SİPARİŞ BULUNAMADI: {order_number} numaralı siparişiniz bulunamadı."
+            
+            order_id, status = order
+            
+            if status != 'draft':
+                cursor.close()
+                return f"SİPARİŞ İPTAL EDİLEMEZ: {order_number} sipariş durumu '{status}' - Sadece taslak siparişler iptal edilebilir."
+            
+            # Siparişi iptal et
             cursor.execute("""
                 UPDATE orders 
-                SET status = 'cancelled', 
-                    cancelled_at = CURRENT_TIMESTAMP,
-                    cancellation_reason = %s,
-                    cancelled_by = %s
+                SET status = 'cancelled', cancelled_at = CURRENT_TIMESTAMP
                 WHERE id = %s
-                RETURNING order_number, total_amount
-            """, [reason, whatsapp_number, order_id])
-            
-            cancelled_order, refund_amount = cursor.fetchone()
-            
-            # İptal geçmişine kaydet
-            cursor.execute("""
-                INSERT INTO order_cancellations 
-                (order_id, order_number, whatsapp_number, reason, cancelled_by, previous_status, refund_amount)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, [order_id, cancelled_order, whatsapp_number, reason, whatsapp_number, status, refund_amount])
+            """, [order_id])
             
             db.connection.commit()
             cursor.close()
             
-            # İptal onay mesajı
-            response = " SİPARİŞ İPTAL EDİLDİ!\n"
-            response += "="*35 + "\n\n"
-            response += f" Sipariş No: {cancelled_order}\n"
-            response += f" Durum: İptal edildi\n"
-            response += f"[PRICE] İade Tutarı: {refund_amount:.2f} TL\n\n"
-            response += "[PROCESS] İade işlemi başlatıldı\n"
-            response += " 3-5 iş günü içinde hesabınıza yansıyacaktır\n\n"
-            response += " Yeni sipariş vermek ister misiniz?"
-            
-            return response
-            
+            return f"[OK] SİPARİŞ İPTAL EDİLDİ: {order_number} numaralı siparişiniz başarıyla iptal edildi."
+        
         else:
-            # Son siparişi iptal et (parametre verilmediyse)
-            return cancel_order(whatsapp_number, 'son', reason)
+            # Genel iptal - sadece draft siparişleri iptal et (sepet sistemi yok)
+            cursor.execute("""
+                UPDATE orders 
+                SET status = 'cancelled', cancelled_at = CURRENT_TIMESTAMP
+                WHERE whatsapp_number = %s AND status = 'draft'
+            """, [whatsapp_number])
+            
+            cancelled_count = cursor.rowcount
+            db.connection.commit()
+            cursor.close()
+            
+            if cancelled_count > 0:
+                return f"[OK] SİPARİŞ İPTAL EDİLDİ: {cancelled_count} taslak sipariş iptal edildi."
+            else:
+                return " İPTAL EDİLECEK SİPARİŞ YOK: Açık taslak siparişiniz bulunmuyor."
         
     except Exception as e:
-        db.connection.rollback()
-        return f" İPTAL HATASI: {str(e)}\n\nMüşteri hizmetleri: 0530 689 7885"
+        return f"İPTAL HATASI: {str(e)}"
 
 def validate_quantity_input(user_input: str) -> tuple[bool, int | str]:
     """
@@ -1302,9 +1434,8 @@ intent_analyzer = Agent(
     instructions="""Sen bir Niyet Analizcisisin. Müşteri mesajlarını kategorize et:
 
 **Kategoriler**:
-- SELAMLAŞMA: "merhaba", "selam", "günaydın", "iyi günler", "hello", "hi" -> transfer_to_customer_manager()
-- URUN_ARAMA: "100x200 silindir", "filtre ariyorum", "ürün arıyorum", "valf arıyorum", "5/2 valf", "3/2 valf", "pnömatik valf" -> transfer_to_product_specialist()
-- ÜRÜN_SEÇİLDİ: "ÜRÜN_SEÇİLDİ: [kod] - [isim] - [fiyat] TL" (HTML'den gelen) -> transfer_to_sales_expert()
+- URUN_ARAMA: "100x200 silindir", "filtre ariyorum", "ürün arıyorum", "valf arıyorum", "5/2 valf", "3/2 valf", "pnömatik valf", "şartlandırıcı", "regülatör", "yağlayıcı", "FRY", "MFRY", "MFR", "MR", "Y 1/2", "hava hazırlayıcı" -> transfer_to_product_specialist()
+- ÜRÜN_SEÇİLDİ: "ÜRÜN_SEÇİLDİ: [kod] - [isim] - [fiyat] TL" veya "URUN_SECILDI: [kod] - [isim] - [fiyat] TL" (HTML'den gelen) -> transfer_to_sales_expert()
 - URUN_SECIMI: "3. ürünü seç", "bu ürünün fiyatı", "ürünü seçtim", "Kod XXX seçtim", "fiyat nedir" -> transfer_to_sales_expert()  
 - MIKTAR_GİRİŞİ: **TASK 2.5 - ENHANCED** Çok çeşitli miktar formatları:
    Pure sayı: "5", "10", "25"
@@ -1314,7 +1445,7 @@ intent_analyzer = Agent(
    Range: "5-10" (ilk sayıyı al)
   -> transfer_to_order_manager()
 - SIPARIS: "sipariş ver", "satın al", "siparişimi tamamla", "onaylıyorum", "siparis vermek istiyorum", "order", "satın almak istiyorum", "EVET", "evet", "tamam", "onayla" -> transfer_to_order_manager()
-- SIPARIS_IPTAL: "iptal", "/iptal", "iptal et", "siparişi iptal et", "cancel", "vazgeçtim", "hayır", "istemiyorum", "sipariş iptal", "iptal etmek istiyorum" -> transfer_to_order_manager()
+- SIPARIS_IPTAL: "iptal", "cancel", "vazgeçtim", "hayır", "istemiyorum" -> transfer_to_order_manager()
 - SIPARIS_GECMIS: "siparişlerim", "geçmiş siparişler", "order history", "son siparişlerim", "ORD-2025-", "sipariş durumu", "sipariş detayı" -> transfer_to_sales_expert()
 - GENEL_SORU: "teslimat süresi", "ödeme koşulları" -> transfer_to_sales_expert()
 - TEKNIK_SORU: "ürün özellikleri", "uyumluluk" -> transfer_to_sales_expert()
@@ -1335,25 +1466,15 @@ TÜRKÇE yanıt ver!""",
 customer_manager = Agent(
     name="Customer Manager",
     model=OPENROUTER_MODEL,
-    instructions="""Sen bir Müşteri Hizmetleri Temsilcisisin. B2B satış asistanı olarak müşterilere yardımcı ol.
+    instructions="""You are Customer Manager. Check customer information.
 
-**Görevlerin**:
-1. Selamlaşmalara samimi ve profesyonel yanıt ver
-2. Müşteri bilgilerini kontrol et (customer_check_tool)
-3. Ürün araması için Product Specialist'e yönlendir
-4. Genel sorulara yardımcı ol
+**Tasks**:
+1. Check customer info (customer_check_tool)
+2. Report credit limit and risk score
+3. Warning if customer inactive
+4. After done: transfer_back_to_intent_analyzer()
 
-**Selamlaşma Yanıtları**:
-- "Merhaba" -> "Merhaba! Size nasıl yardımcı olabilirim? Ürün araması mı yapmak istersiniz?"
-- "Günaydın" -> "Günaydın! Hoş geldiniz. Hangi ürünü arıyorsunuz?"
-- Diğer selamlar -> "Hoş geldiniz! Size nasıl yardımcı olabilirim?"
-
-**Önemli**: 
-- Daima Türkçe yanıt ver
-- Müşteriye yardımcı olmaya hazır olduğunu göster
-- Ürün araması için yönlendirme yap
-
-Yanıtından sonra transfer_back_to_intent_analyzer() kullan.""",
+Only handle customer info, no product search!""",
     functions=[customer_check_tool, transfer_back_to_intent_analyzer]
 )
 
@@ -1361,15 +1482,24 @@ Yanıtından sonra transfer_back_to_intent_analyzer() kullan.""",
 product_specialist = Agent(
     name="Product Specialist", 
     model=OPENROUTER_MODEL,
-    instructions=f"""You are Product Specialist. **Single-Product Instant Workflow**
+    instructions="""You are Product Specialist. **Single-Product Instant Workflow**
 
 **ARAMA ARAÇLARI**:
 - valve_search_tool: VALF aramaları için kullan (5/2 valf, 3/2 valf, 1/4 valf gibi)
+- air_preparation_search_tool: Şartlandırıcı, Regülatör, Yağlayıcı aramaları için kullan (FRY, MFRY, MFR, MR, Y gibi)
 - product_search_tool: Diğer tüm ürünler için kullan (silindir dahil)
 
 **KULLANIM KURALI**:
-Eğer mesajda "valf" kelimesi geçiyorsa -> valve_search_tool kullan
-Diğer tüm durumlarda -> product_search_tool kullan
+1. Eğer mesajda "valf" kelimesi geçiyorsa -> valve_search_tool kullan
+2. Eğer mesajda şu kelimelerden biri geçiyorsa -> air_preparation_search_tool kullan:
+   - şartlandırıcı, sartlandırıcı
+   - regülatör, regulator
+   - yağlayıcı, yaglayıcı
+   - filtre (FR kombinasyonları ile)
+   - FRY, MFRY, MFR, MR (tek başına regülatör)
+   - Y (tek başına yağlayıcı)
+   - hava hazırlayıcı
+3. Diğer tüm durumlarda -> product_search_tool kullan
 
 **CRITICAL RULE**: 
 When any tool returns a response, you MUST copy it EXACTLY as-is. 
@@ -1381,14 +1511,14 @@ URUN BULUNDU: '[query]' icin [COUNT] urun mevcut!
 Toplam: [COUNT] urun
 Stokta: [IN_STOCK] urun
 
-URUN LISTESI: {os.getenv('TUNNEL_URL', 'https://incomplete-travelling-bye-script.trycloudflare.com')}/products/[ID]
+URUN LISTESI: [TUNNEL_URL]/products/[ID]
 
 Musteriye bu linki gonder! Link'ten urun secimi yapabilir.
 
 **YOU MUST RETURN THIS EXACT TEXT WITHOUT ANY CHANGES!**
 
 **NEW WORKFLOW**: When product selected from HTML list, customer goes directly to Sales Expert via ÜRÜN_SEÇİLDİ intent!""",
-    functions=[product_search_tool, valve_search_tool, stock_check_tool, transfer_from_product_to_order]
+    functions=[product_search_tool, valve_search_tool, air_preparation_search_tool, stock_check_tool, transfer_from_product_to_order]
 )
 
 # 4. Sales Expert - TASK 2.4: Product confirmation + pricing + order history
@@ -1432,40 +1562,46 @@ Kaç adet? (1-[max_stok] arası)"
 order_manager = Agent(
     name="Order Manager",
     model=OPENROUTER_MODEL,
-    instructions="""Sen Order Manager'sın. **ENHANCED: Sipariş Yönetimi ve İptal Sistemi**
+    instructions="""Sen Order Manager'sın. **TASK 2.5: ENHANCED Context-Aware Quantity Processing & Instant Ordering**
 
-**YENİ ÖZELLİKLER**:
-1. **Gelişmiş İptal Sistemi**: cancel_order() ile detaylı iptal işlemleri
-2. **İptal Komutları**:
-   - "iptal" veya "/iptal" -> Son siparişi iptal et
-   - "/iptal ORD-2025-XXX" -> Belirli siparişi iptal et
-   - "/iptal son" -> Son siparişi iptal et
-   - "/iptal hepsi" -> Tüm iptal edilebilir siparişleri iptal et
-3. **İptal Geçmişi**: get_cancellation_history() ile iptal edilen siparişler
-4. **İade Takibi**: Otomatik iade tutarı hesaplama ve bildirim
-
-**TASK 2.5 WORKFLOW** (Miktar İşleme):
+**YENİ TASK 2.5 WORKFLOW**:
 1. **Context + Quantity Processing**: process_context_quantity_input() ile gelişmiş miktar işleme
 2. **Enhanced Quantity Detection**: Çok çeşitli format desteği ("5", "5 adet", "beş tane", "yaklaşık 10")
 3. **Instant Order Creation**: Context + quantity ile direkt sipariş oluştur
 4. **Smart Error Handling**: Stok kontrolü, format validation, context management
 
-**İPTAL İŞLEMİ KURALLARI**:
-- Sadece 'draft', 'pending', 'awaiting_payment', 'confirmed' durumundaki siparişler iptal edilebilir
-- 48 saatten eski siparişler iptal edilemez
-- İptal geçmişi otomatik kaydedilir
-- İade tutarı otomatik hesaplanır ve bildirilir
+**ANA FONKSİYON**:
+- **process_context_quantity_input()**: Ana miktar işleme fonksiyonu
+   Context kontrolü
+   Gelişmiş miktar algılama 
+   Stok validasyonu
+   Direkt sipariş oluşturma
+   Error handling
 
 **IŞLEM AKIŞI**:
-1. İptal komutu geldiğinde cancel_order() çalıştır
-2. Miktar girişi geldiğinde process_context_quantity_input() çalıştır
-3. İptal geçmişi istenirse get_cancellation_history() kullan
+1. Mesaj geldiğinde önce process_context_quantity_input() çalıştır
+2. Bu fonksiyon her şeyi handle eder:
+   - Context var mı? -> is_quantity_context_valid()
+   - Miktar geçerli mi? -> detect_quantity_input()  
+   - Stok uygun mu? -> validate_quantity_against_stock()
+   - Sipariş oluştur -> create_single_product_order()
+   - Context temizle -> clear_selected_product_context()
+
+**TASK 2.5 ÖZELLİKLERİ**:
+- [OK] Çoklu format desteği ("5", "5 adet", "beş adet", "yaklaşık 5")
+- [OK] Context-aware processing
+- [OK] Smart stock validation
+- [OK] Instant order creation
+- [OK] Automatic context cleanup
+- [OK] Turkish quantity expressions
+- [OK] Error handling for all edge cases
 
 **KRITIK**:
-- İptal işlemlerinde detaylı bilgi ver (iade tutarı, süre, vs.)
-- Başarılı iptalden sonra yeni sipariş için yönlendir
-- Türkçe konuş ve net talimatlar ver""",
-    functions=[process_context_quantity_input, get_selected_product_context, detect_quantity_input, create_single_product_order, ask_quantity_for_product, confirm_single_product_order, cancel_order, get_cancellation_history, clear_selected_product_context, transfer_back_to_intent_analyzer]
+- İlk önce process_context_quantity_input() çalıştır!
+- Bu fonksiyon başarılı sipariş sonrası transfer_back_to_intent_analyzer()
+- Hata durumlarında kullanıcıya net bilgi ver
+- Türkçe konuş ve detaylı feedback ver""",
+    functions=[process_context_quantity_input, get_selected_product_context, detect_quantity_input, create_single_product_order, ask_quantity_for_product, confirm_single_product_order, cancel_order, clear_selected_product_context, transfer_back_to_intent_analyzer]
 )
 
 # ===================== SWARM SYSTEM =====================
@@ -1490,9 +1626,9 @@ class SwarmB2BSystem:
         
         print(f"[Swarm] Processing: {customer_message[:50]}... from {whatsapp_number}")
         
-        # TASK 2.4: ÜRÜN_SEÇİLDİ mesaj detection
-        if customer_message.startswith("ÜRÜN_SEÇİLDİ:"):
-            print(f"[TASK 2.4] ÜRÜN_SEÇİLDİ intent detected: {customer_message[:100]}")
+        # TASK 2.4: ÜRÜN_SEÇİLDİ/URUN_SECILDI mesaj detection
+        if customer_message.startswith("ÜRÜN_SEÇİLDİ:") or customer_message.startswith("URUN_SECILDI:"):
+            print(f"[TASK 2.4] ÜRÜN_SEÇİLDİ/URUN_SECILDI intent detected: {customer_message[:100]}")
         
         # TASK 2.5: MIKTAR_GİRİŞİ pre-detection for logging
         is_quantity_input, _ = detect_quantity_input(customer_message)
@@ -1516,15 +1652,11 @@ class SwarmB2BSystem:
             for i, msg in enumerate(response.messages[-5:]):  # Son 5 mesaj
                 print(f"[DEBUG] Message {i}: role={msg.get('role', 'unknown')}, content={str(msg.get('content', ''))[:200]}")
             
-            # Tool response'unu bul (TASK 2.4 & 2.5 responses dahil)
+            # Assistant response'unu bul (TASK 2.4 & 2.5 responses dahil)
             final_message = None
             for msg in reversed(response.messages):
                 content = str(msg.get("content", ""))
-                # Tool response'u mu kontrol et (TASK 2.5 dahil)
-                if any(keyword in content for keyword in ["URUN BULUNDU", " ÜRÜN SEÇİMİ ONAYLANDI", " KAÇ ADET", " SİPARİŞ ONAY", "[ERROR] MIKTAR İŞLEME HATASI", "[ERROR] Önce bir ürün seçmelisiniz"]):
-                    final_message = content
-                    break
-                # Normal assistant mesajı mı ve agent ismi değil mi
+                # Sadece assistant role'ündeki mesajları kontrol et (tool responses ignore)
                 if msg.get("role") == "assistant" and content and content not in ["Product Specialist", "Customer Manager", "Sales Expert", "Intent Analyzer", "Order Manager"]:
                     final_message = content
                     break
@@ -1573,15 +1705,9 @@ def process_whatsapp_message():
         # Swarm sistemini çalıştır
         result = system_instance.process_message(message, whatsapp_number)
         
-        # Fix Turkish character encoding
-        response_text = str(result)
-        if isinstance(result, str):
-            # Ensure proper UTF-8 encoding
-            response_text = result.encode('utf-8', errors='replace').decode('utf-8')
-        
         return jsonify({
             "success": True,
-            "response": response_text,
+            "response": str(result),
             "agent_count": 5,
             "message": message[:100],
             "whatsapp_number": whatsapp_number,
@@ -1664,7 +1790,7 @@ if __name__ == "__main__":
         # Flask server başlat
         app.run(
             host="0.0.0.0",
-            port=int(os.getenv('SWARM_SERVER_PORT', 3008)),
+            port=3007,  # CrewAI'dan farklı port
             debug=True,
             threaded=True
         )
