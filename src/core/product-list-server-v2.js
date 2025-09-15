@@ -4,7 +4,7 @@ const fs = require('fs');
 const config = require('./config');
 
 const app = express();
-const port = process.env.PRODUCT_SERVER_PORT || 3006;
+const port = process.env.PRODUCT_SERVER_PORT || 3005;
 
 // Import cleanup service
 const HTMLCleanupService = require('./html-cleanup-service');

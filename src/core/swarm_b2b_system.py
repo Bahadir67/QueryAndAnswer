@@ -571,7 +571,7 @@ def valve_search_tool(query: str) -> str:
             
             # HTML dosyası oluştur - PLAN'A GÖRE
             import os
-            html_dir = "C:/projects/Asistan/product-pages"
+            html_dir = os.getenv('PRODUCT_PAGES_DIR', 'C:/projects/WhatsAppB2B-Clean/product-pages')
             os.makedirs(html_dir, exist_ok=True)
             
             # Dosya adı formatı: products_{whatsapp}_{session}_{timestamp}.html
@@ -594,11 +594,8 @@ def valve_search_tool(query: str) -> str:
             
             # Liste linki response (Tunnel URL kullan)
             tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3006')
-            response = f"URUN BULUNDU: '{query}' icin {count} valf mevcut!\n\n"
-            response += f"Toplam: {count} valf\n"
-            response += f"Stokta: {in_stock_count} valf\n\n"
-            response += f"URUN LISTESI: {tunnel_url}/products/{html_filename}\n\n"
-            response += f"Musteriye bu linki gonder! Link'ten urun secimi yapabilir."
+            response = f"💼 {count} valf - {in_stock_count} stokta\n\n"
+            response += f"📋 ÜRÜN LİSTESİ:\n{tunnel_url}/products/{html_filename}"
             
             print(f"[VALVE SEARCH] Found {count} valves, created session: {session_id}")
             return response
@@ -732,14 +729,8 @@ def air_preparation_search_tool(query: str) -> str:
             tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3006')
             list_url = f"{tunnel_url}/products/{filename}"
             
-            response = f"""URUN BULUNDU: '{query}' icin {count} urun mevcut!
-
-Toplam: {count} urun
-Stokta: {in_stock} urun
-
-URUN LISTESI: {list_url}
-
-Musteriye bu linki gonder! Link'ten urun secimi yapabilir."""
+            response = f"💼 {count} ürün - {in_stock} stokta\n\n"
+            response += f"📋 ÜRÜN LİSTESİ:\n{list_url}"
             
             return response
         else:
@@ -805,11 +796,8 @@ def product_search_tool(query: str) -> str:
                 
                 # Liste linki response (Tunnel URL kullan)
                 tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3006')
-                response = f"URUN BULUNDU: '{query}' icin {count} urun mevcut!\n\n"
-                response += f"Toplam: {count} urun\n"
-                response += f"Stokta: {in_stock_count} urun\n\n"
-                response += f"URUN LISTESI: {tunnel_url}/products/{html_filename}\n\n"
-                response += f"Musteriye bu linki gonder! Link'ten urun secimi yapabilir."
+                response = f"💼 {count} ürün - {in_stock_count} stokta\n\n"
+                response += f"📋 ÜRÜN LİSTESİ:\n{tunnel_url}/products/{html_filename}"
                 
                 print(f"[PRODUCT SEARCH] Found {count} products, created session: {session_id}")
                 return response
@@ -966,10 +954,7 @@ def create_order_confirmation_message(order_number: str, order_data: dict, total
         confirmation += f" GENEL TOPLAM: {total_amount:.2f} TL\n"
         confirmation += "-" * 35 + "\n\n"
         
-        # Delivery info
-        confirmation += "[DELIVERY] TESLİMAT BİLGİSİ:\n"
-        confirmation += "    Tahmini teslimat: 2-3 iş günü\n"
-        confirmation += "    Kargo takip bilgisi SMS ile gönderilecek\n\n"
+        # Delivery info removed per user request
         
         # Contact info
         confirmation += " İLETİŞİM:\n"
@@ -1436,7 +1421,7 @@ intent_analyzer = Agent(
 **Kategoriler**:
 - URUN_ARAMA: "100x200 silindir", "filtre ariyorum", "ürün arıyorum", "valf arıyorum", "5/2 valf", "3/2 valf", "pnömatik valf", "şartlandırıcı", "regülatör", "yağlayıcı", "FRY", "MFRY", "MFR", "MR", "Y 1/2", "hava hazırlayıcı" -> transfer_to_product_specialist()
 - ÜRÜN_SEÇİLDİ: "ÜRÜN_SEÇİLDİ: [kod] - [isim] - [fiyat] TL" veya "URUN_SECILDI: [kod] - [isim] - [fiyat] TL" (HTML'den gelen) -> transfer_to_sales_expert()
-- URUN_SECIMI: "3. ürünü seç", "bu ürünün fiyatı", "ürünü seçtim", "Kod XXX seçtim", "fiyat nedir" -> transfer_to_sales_expert()  
+- URUN_SECIMI: "3. ürünü seç", "bu ürünün fiyatı", "ürünü seçtim", "Kod XXX seçtim", "fiyat nedir" -> transfer_to_sales_expert()
 - MIKTAR_GİRİŞİ: **TASK 2.5 - ENHANCED** Çok çeşitli miktar formatları:
    Pure sayı: "5", "10", "25"
    Turkish units: "5 adet", "10 tane", "3 piece", "7 pcs"
@@ -1447,6 +1432,8 @@ intent_analyzer = Agent(
 - SIPARIS: "sipariş ver", "satın al", "siparişimi tamamla", "onaylıyorum", "siparis vermek istiyorum", "order", "satın almak istiyorum", "EVET", "evet", "tamam", "onayla" -> transfer_to_order_manager()
 - SIPARIS_IPTAL: "iptal", "cancel", "vazgeçtim", "hayır", "istemiyorum" -> transfer_to_order_manager()
 - SIPARIS_GECMIS: "siparişlerim", "geçmiş siparişler", "order history", "son siparişlerim", "ORD-2025-", "sipariş durumu", "sipariş detayı" -> transfer_to_sales_expert()
+- TESEKKUR: "teşekkürler", "teşekkür", "sağol", "sağolun", "thanks", "thank you", "çok güzel", "harika", "mükemmel" -> transfer_to_customer_manager()
+- SELAMLAMA: "merhaba", "selam", "günaydın", "iyi günler", "nasılsınız", "hello", "hi" -> transfer_to_customer_manager()
 - GENEL_SORU: "teslimat süresi", "ödeme koşulları" -> transfer_to_sales_expert()
 - TEKNIK_SORU: "ürün özellikleri", "uyumluluk" -> transfer_to_sales_expert()
 - HESAP_SORU: "bakiye", "kredi limiti", "müşteri bilgisi" -> transfer_to_customer_manager()
@@ -1466,15 +1453,21 @@ TÜRKÇE yanıt ver!""",
 customer_manager = Agent(
     name="Customer Manager",
     model=OPENROUTER_MODEL,
-    instructions="""You are Customer Manager. Check customer information.
+    instructions="""Sen Customer Manager'sın. Müşteri karşılama ve genel işlemlerden sorumlusun.
 
-**Tasks**:
-1. Check customer info (customer_check_tool)
-2. Report credit limit and risk score
-3. Warning if customer inactive
-4. After done: transfer_back_to_intent_analyzer()
+**Görevlerin**:
+1. **SELAMLAMA**: Merhaba, selam gibi karşılama mesajlarına sıcak karşılama yap
+2. **TEŞEKKÜR**: Teşekkür mesajlarına kibarca cevap ver ve yardıma hazır olduğunu belirt
+3. **MÜŞTERİ BİLGİ**: Müşteri bilgilerini kontrol et (customer_check_tool)
+4. **KREDİ LİMİTİ**: Kredi limiti ve risk skoru raporla
+5. **UYARILAR**: Müşteri pasifse uyar
 
-Only handle customer info, no product search!""",
+**TÜRKÇE Yanıtlar**:
+- Selamlama: "Merhaba! Size nasıl yardımcı olabilirim?"
+- Teşekkür: "Rica ederim! Başka bir şey için yardıma ihtiyacınız olursa çekinmeden sorabilirsiniz."
+- Genel: Profesyonel ve dostane yaklaşım
+
+Sadece müşteri işlemleri, ürün arama yapmıyorsun!""",
     functions=[customer_check_tool, transfer_back_to_intent_analyzer]
 )
 
@@ -1501,21 +1494,21 @@ product_specialist = Agent(
    - hava hazırlayıcı
 3. Diğer tüm durumlarda -> product_search_tool kullan
 
-**CRITICAL RULE**: 
-When any tool returns a response, you MUST copy it EXACTLY as-is. 
-DO NOT reformat, DO NOT use markdown, DO NOT change the text!
+**RESPONSE FORMAT**:
+When tool finds products, return the tool response plus a helpful comment:
 
-The tool returns this exact format:
-URUN BULUNDU: '[query]' icin [COUNT] urun mevcut!
+Tool response (copy exactly):
+💼 [COUNT] ürün - [IN_STOCK] stokta
 
-Toplam: [COUNT] urun
-Stokta: [IN_STOCK] urun
+📋 ÜRÜN LİSTESİ:
+[TUNNEL_URL]/products/[ID]
 
-URUN LISTESI: [TUNNEL_URL]/products/[ID]
+Then add your own contextual message based on:
+- Product type found
+- Customer's specific need
+- Next suggested action
 
-Musteriye bu linki gonder! Link'ten urun secimi yapabilir.
-
-**YOU MUST RETURN THIS EXACT TEXT WITHOUT ANY CHANGES!**
+Example: "İsteğinize uygun seçenekleri listelendi. Teknik detayları inceleyip uygun olanları seçebilirsiniz."
 
 **NEW WORKFLOW**: When product selected from HTML list, customer goes directly to Sales Expert via ÜRÜN_SEÇİLDİ intent!""",
     functions=[product_search_tool, valve_search_tool, air_preparation_search_tool, stock_check_tool, transfer_from_product_to_order]
