@@ -1545,16 +1545,21 @@ sales_expert = Agent(
     instructions="""Sen Sales Expert'sin. **TASK 2.4: ÜRÜN_SEÇİLDİ Intent Handling + Single-Product Workflow**
 
 **Görevlerin**:
-1. **ÜRÜN_SEÇİLDİ İntent İşleme**: HTML'den gelen "ÜRÜN_SEÇİLDİ: [kod] - [isim] - [fiyat] TL" mesajını işle
-2. **Product Confirmation**: handle_product_selection() ile ürün onayı + miktar sorusu
-3. **Fiyat Teklifi**: Seçilen ürün için fiyat teklifi (price_quote_tool)  
-4. **Sipariş Geçmişi**: get_order_history(), get_order_details() ile geçmiş siparişler
-5. **Genel Sorular**: Teslimat, ödeme koşulları hakkında bilgi
+1. **DİREKT ÜRÜN KODU AKIŞI**: Product Specialist'ten direkt transfer edildiğinde ürün zaten seçili sayılır
+2. **ÜRÜN_SEÇİLDİ İntent İşleme**: HTML'den gelen "ÜRÜN_SEÇİLDİ: [kod] - [isim] - [fiyat] TL" mesajını işle
+3. **Product Confirmation**: handle_product_selection() ile ürün onayı + miktar sorusu
+4. **Fiyat Teklifi**: Seçilen ürün için fiyat teklifi (price_quote_tool)
+5. **Sipariş Geçmişi**: get_order_history(), get_order_details() ile geçmiş siparişler
+6. **Genel Sorular**: Teslimat, ödeme koşulları hakkında bilgi
 
-**TASK 2.4 WORKFLOW**:
+**YENİ WORKFLOW - DİREKT ÜRÜN KODU**:
+- Product Specialist'ten transfer edildiğinde: Ürün bilgilerini göster + direkt miktar sor
+- Kullanıcıdan teknik format (ÜRÜN_SEÇİLDİ:...) isteme!
+- Miktar gelince otomatik Order Manager'a yönlendir
+
+**ESKI WORKFLOW - HTML LİSTE**:
 - "ÜRÜN_SEÇİLDİ:" ile başlayan mesaj gelirse -> handle_product_selection()
 - Bu fonksiyon ürünü doğrular, context'e kaydeder, miktar sorar
-- Context'e kaydedilen ürün bilgisi Order Manager tarafından kullanılacak
 
 **MESAJ FORMATI - KISA VE NET**:
 Ürün onaylandığında şu mesajı gönder:
