@@ -15,6 +15,7 @@ import random
 import re
 import time
 import hashlib
+from datetime import datetime, timedelta
 from typing import Dict, List, Any, Tuple
 from swarm import Swarm, Agent
 from flask import Flask, request, jsonify
@@ -22,6 +23,8 @@ from flask import Flask, request, jsonify
 # Fix Windows encoding issues
 if sys.platform == "win32":
     import locale
+    # Set encoding to handle Turkish characters and emojis
+    os.environ['PYTHONIOENCODING'] = 'utf-8'
     try:
         # Windows için UTF-8 encoding
         locale.setlocale(locale.LC_ALL, 'Turkish_Turkey.utf8')
@@ -329,7 +332,7 @@ def generate_product_html(products, query, html_filename):
 <body>
     <div class="container">
         <div class="header">
-            <h2>🛍️ Ürün Listesi</h2>
+            <h2>Urun Listesi</h2>
             <p>Arama: "<strong>{query}</strong>"</p>
             <p>Toplam {len(products)} ürün bulundu</p>
         </div>
@@ -405,7 +408,7 @@ def generate_product_html(products, query, html_filename):
             
             // Create success icon
             var icon = document.createElement('div');
-            icon.innerHTML = '✅';
+            icon.innerHTML = 'OK';
             icon.style.fontSize = '48px';
             icon.style.marginBottom = '15px';
             
@@ -595,7 +598,7 @@ def valve_search_tool(query: str) -> str:
             # Liste linki response (Tunnel URL kullan)
             tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3006')
             response = f"💼 {count} valf - {in_stock_count} stokta\n\n"
-            response += f"📋 ÜRÜN LİSTESİ:\n{tunnel_url}/products/{html_filename}"
+            response += f"URUN LISTESI:\n{tunnel_url}/products/{html_filename}"
             
             print(f"[VALVE SEARCH] Found {count} valves, created session: {session_id}")
             return response
@@ -730,7 +733,7 @@ def air_preparation_search_tool(query: str) -> str:
             list_url = f"{tunnel_url}/products/{filename}"
             
             response = f"💼 {count} ürün - {in_stock} stokta\n\n"
-            response += f"📋 ÜRÜN LİSTESİ:\n{list_url}"
+            response += f"URUN LISTESI:\n{list_url}"
             
             return response
         else:
@@ -767,7 +770,7 @@ def product_search_tool(query: str) -> str:
                         # Fiyat aralığı varsa onu göster
                         price_display = exact_product.get('price_range', f"{exact_product['price']} TL")
                         # Direkt satış akışına geç
-                        return f"🎯 TAM EŞLEŞME BULUNDU!\n\n📦 {exact_product['name']}\n💰 {price_display}\n📋 Kod: {exact_product['code']}\n📦 Stok: {exact_product['stock']} adet\n\n💡 Bu ürünü almak ister misiniz? Sipariş vermek için Sales Expert'e yönlendiriliyorsunuz..."
+                        return f"[URUN BULUNDU] TAM ESLESME!\n\nUrun: {exact_product['name']}\nFiyat: {price_display}\nKod: {exact_product['code']}\nStok: {exact_product['stock']} adet\n\nBu urunu almak ister misiniz? Siparis vermek icin Sales Expert'e yonlendiriliyorsunuz..."
                 # Session ID oluştur
                 session_id = str(uuid.uuid4())[:8]
                 
@@ -812,7 +815,7 @@ def product_search_tool(query: str) -> str:
                 # Liste linki response (Tunnel URL kullan)
                 tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3006')
                 response = f"💼 {count} ürün - {in_stock_count} stokta\n\n"
-                response += f"📋 ÜRÜN LİSTESİ:\n{tunnel_url}/products/{html_filename}"
+                response += f"URUN LISTESI:\n{tunnel_url}/products/{html_filename}"
                 
                 print(f"[PRODUCT SEARCH] Found {count} products, created session: {session_id}")
                 return response
@@ -1462,7 +1465,8 @@ intent_analyzer = Agent(
 **KRİTİK KURALLAR**:
 1. MIKTAR_GİRİŞİ algılandığında mutlaka transfer_to_order_manager() çağır!
 2. **DİREKT ÜRÜN KODU ALGıLAMA**: Boşluksuz alfasayısal kod görürsen (13B0099, 10A0003, ABC123 gibi) -> MUTLAKA transfer_to_product_specialist() çağır! "stokta var mı", "fiyatı", "ürünü arıyorum" gibi ifadeler olmasına gerek yok.
-3. TÜRKÇE yanıt ver!""",
+3. **PURE SAYI KURALII**: Sadece rakam olan mesajlar ("2", "5", "10") -> MUTLAKA MIKTAR_GİRİŞİ olarak algıla ve transfer_to_order_manager() çağır!
+4. TÜRKÇE yanıt ver!""",
     functions=[transfer_to_customer_manager, transfer_to_product_specialist, transfer_to_sales_expert, transfer_to_order_manager]
 )
 
@@ -1512,7 +1516,7 @@ product_specialist = Agent(
 3. Diğer tüm durumlarda -> product_search_tool kullan
 
 **DIREKT ÜRÜN KODU AKIŞI**:
-- Eğer search tool "🎯 TAM EŞLEŞME BULUNDU!" mesajı dönerse:
+- Eger search tool "[URUN BULUNDU] TAM ESLESME!" mesaji donerse:
 - Bu direkt ürün kodu demektir (örn: 13B0099, ABC123)
 - OTOMATIK olarak transfer_to_sales_expert() fonksiyonunu çağır
 - Müşteriyi direkt Sales Expert'e yönlendir
@@ -1524,7 +1528,7 @@ When tool finds products, return the tool response plus a helpful comment:
 Tool response (copy exactly):
 💼 [COUNT] ürün - [IN_STOCK] stokta
 
-📋 ÜRÜN LİSTESİ:
+URUN LISTESI:
 [TUNNEL_URL]/products/[ID]
 
 Then add your own contextual message based on:
@@ -1629,42 +1633,157 @@ order_manager = Agent(
 # ===================== SWARM SYSTEM =====================
 
 class SwarmB2BSystem:
-    """OpenAI Swarm Single-Product B2B System with TASK 2.5: Enhanced MIKTAR_GİRİŞİ Intent"""
-    
+    """OpenAI Swarm Single-Product B2B System with Conversation Memory"""
+
     def __init__(self):
         self.client = client
+
+        # Conversation Memory System - Store last 5 messages per user, 30-minute timeout, FIFO
+        self.conversation_memory = {}  # {whatsapp_number: {"messages": [...], "last_activity": datetime, "timeout_minutes": 30}}
+        self.memory_settings = {
+            "max_messages": 5,  # Store last 5 messages (FIFO)
+            "timeout_minutes": 30,  # 30-minute timeout
+            "cleanup_on_message": True  # Cleanup expired conversations after each message
+        }
+
         print("[Swarm] Single-Product B2B System initialized")
         print("Agents: Intent Analyzer -> Customer/Product/Sales/Order")
         print("Workflow: Single-Product Instant Ordering (Cart Removed)")
         print("TASK 2.4: ÜRÜN_SEÇİLDİ intent handling enabled")
         print("TASK 2.5: Enhanced MIKTAR_GİRİŞİ intent implemented")
+        print(f"[Memory] Conversation memory enabled: {self.memory_settings['max_messages']} messages, {self.memory_settings['timeout_minutes']}min timeout, FIFO cleanup")
+
+    def cleanup_expired_conversations(self):
+        """Cleanup expired conversations based on timeout_minutes"""
+        if not self.memory_settings['cleanup_on_message']:
+            return
+
+        current_time = datetime.now()
+        timeout_delta = timedelta(minutes=self.memory_settings['timeout_minutes'])
+        expired_numbers = []
+
+        for whatsapp_number, memory_data in self.conversation_memory.items():
+            last_activity = memory_data.get('last_activity')
+            if last_activity and (current_time - last_activity) > timeout_delta:
+                expired_numbers.append(whatsapp_number)
+
+        # Remove expired conversations
+        for number in expired_numbers:
+            del self.conversation_memory[number]
+            print(f"[Memory] Expired conversation cleanup: {number}")
+
+        if expired_numbers:
+            print(f"[Memory] Cleaned up {len(expired_numbers)} expired conversations")
+
+    def add_message_to_memory(self, whatsapp_number: str, role: str, content: str):
+        """Add message to conversation memory with FIFO management"""
+        current_time = datetime.now()
+
+        # Initialize conversation memory if not exists
+        if whatsapp_number not in self.conversation_memory:
+            self.conversation_memory[whatsapp_number] = {
+                "messages": [],
+                "last_activity": current_time
+            }
+
+        memory_data = self.conversation_memory[whatsapp_number]
+        messages = memory_data["messages"]
+
+        # Add new message
+        new_message = {
+            "role": role,
+            "content": content,
+            "timestamp": current_time.isoformat()
+        }
+        messages.append(new_message)
+
+        # FIFO: Keep only last max_messages
+        max_messages = self.memory_settings['max_messages']
+        if len(messages) > max_messages:
+            messages[:] = messages[-max_messages:]  # Keep last N messages
+
+        # Update last activity
+        memory_data["last_activity"] = current_time
+
+        print(f"[Memory] Added {role} message for {whatsapp_number}, total: {len(messages)}/{max_messages}")
+
+    def get_conversation_history(self, whatsapp_number: str) -> List[Dict[str, str]]:
+        """Get conversation history for Swarm client (format: [{"role": str, "content": str}])"""
+        if whatsapp_number not in self.conversation_memory:
+            return []
+
+        messages = self.conversation_memory[whatsapp_number]["messages"]
+        # Convert to Swarm format (remove timestamp)
+        swarm_messages = [
+            {"role": msg["role"], "content": msg["content"]}
+            for msg in messages
+        ]
+
+        print(f"[Memory] Retrieved {len(swarm_messages)} messages for {whatsapp_number}")
+        return swarm_messages
+
+    def get_memory_status(self, whatsapp_number: str = None) -> Dict[str, Any]:
+        """Get memory status for debugging"""
+        if whatsapp_number:
+            if whatsapp_number in self.conversation_memory:
+                memory_data = self.conversation_memory[whatsapp_number]
+                return {
+                    "user": whatsapp_number,
+                    "message_count": len(memory_data["messages"]),
+                    "last_activity": memory_data["last_activity"].isoformat(),
+                    "age_minutes": (datetime.now() - memory_data["last_activity"]).total_seconds() / 60
+                }
+            else:
+                return {"user": whatsapp_number, "status": "no_memory"}
+        else:
+            return {
+                "total_conversations": len(self.conversation_memory),
+                "settings": self.memory_settings,
+                "users": list(self.conversation_memory.keys())
+            }
     
     def process_message(self, customer_message: str, whatsapp_number: str) -> str:
-        """Ana mesaj işleme fonksiyonu - TASK 2.5 compatible"""
-        
+        """Ana mesaj işleme fonksiyonu - Conversation Memory enabled"""
+
+        # Cleanup expired conversations first
+        self.cleanup_expired_conversations()
+
         # Global context'e WhatsApp numarasını kaydet
         global current_whatsapp_context
         current_whatsapp_context['whatsapp_number'] = whatsapp_number
-        
+
         print(f"[Swarm] Processing: {customer_message[:50]}... from {whatsapp_number}")
-        
+
+        # Add user message to conversation memory
+        self.add_message_to_memory(whatsapp_number, "user", customer_message)
+
+        # Get conversation history for context
+        conversation_history = self.get_conversation_history(whatsapp_number)
+
         # TASK 2.4: ÜRÜN_SEÇİLDİ/URUN_SECILDI mesaj detection
         if customer_message.startswith("ÜRÜN_SEÇİLDİ:") or customer_message.startswith("URUN_SECILDI:"):
             print(f"[TASK 2.4] ÜRÜN_SEÇİLDİ/URUN_SECILDI intent detected: {customer_message[:100]}")
-        
+
         # TASK 2.5: MIKTAR_GİRİŞİ pre-detection for logging
         is_quantity_input, _ = detect_quantity_input(customer_message)
         if is_quantity_input:
             print(f"[TASK 2.5] MIKTAR_GİRİŞİ intent potential: {customer_message[:100]}")
-        
-        # Context message
-        context_msg = f"Customer: {whatsapp_number}\nMessage: {customer_message}"
-        
+
+        # If we have conversation history, use it; otherwise start fresh
+        if conversation_history:
+            # Add current message to the history
+            messages_for_swarm = conversation_history + [{"role": "user", "content": f"Customer: {whatsapp_number}\nMessage: {customer_message}"}]
+            print(f"[Memory] Using conversation history: {len(conversation_history)} previous messages")
+        else:
+            # Fresh conversation
+            messages_for_swarm = [{"role": "user", "content": f"Customer: {whatsapp_number}\nMessage: {customer_message}"}]
+            print(f"[Memory] Fresh conversation started for {whatsapp_number}")
+
         # Swarm'ı çalıştır - Intent Analyzer ile başla
         try:
             response = self.client.run(
                 agent=intent_analyzer,
-                messages=[{"role": "user", "content": context_msg}],
+                messages=messages_for_swarm,
                 context_variables={"whatsapp_number": whatsapp_number},
                 debug=True  # Debug açık - handoff'ları görmek için
             )
@@ -1674,7 +1793,7 @@ class SwarmB2BSystem:
             for i, msg in enumerate(response.messages[-5:]):  # Son 5 mesaj
                 print(f"[DEBUG] Message {i}: role={msg.get('role', 'unknown')}, content={str(msg.get('content', ''))[:200]}")
             
-            # Assistant response'unu bul (TASK 2.4 & 2.5 responses dahil)
+            # Assistant response'unu bul ve memory'ye ekle
             final_message = None
             for msg in reversed(response.messages):
                 content = str(msg.get("content", ""))
@@ -1686,14 +1805,21 @@ class SwarmB2BSystem:
             # Hiçbir şey bulamazsan son mesajı al
             if not final_message:
                 final_message = response.messages[-1]["content"]
-            
+
+            # Add assistant response to conversation memory
+            self.add_message_to_memory(whatsapp_number, "assistant", final_message)
+
             print(f"[Swarm] Final response: {final_message[:100]}...")
-            
+            print(f"[Memory] Conversation updated for {whatsapp_number}")
+
             return final_message
             
         except Exception as e:
             print(f"[Swarm Error] {e}")
-            return f"Sistem hatası: {str(e)}"
+            error_msg = f"Sistem hatası: {str(e)}"
+            # Add error to memory too
+            self.add_message_to_memory(whatsapp_number, "assistant", error_msg)
+            return error_msg
 
 # ===================== HTTP SERVER =====================
 
@@ -1756,8 +1882,72 @@ def health_check():
         "framework": "Swarm",
         "workflow": "Single-Product Instant Ordering",
         "task_2_4": "ÜRÜN_SEÇİLDİ intent handling",
-        "task_2_5": "Enhanced MIKTAR_GİRİŞİ intent processing"
+        "task_2_5": "Enhanced MIKTAR_GİRİŞİ intent processing",
+        "conversation_memory": "enabled"
     })
+
+@app.route('/memory-status', methods=['GET'])
+def memory_status():
+    """Get conversation memory status for debugging"""
+    global system_instance
+
+    if system_instance is None:
+        return jsonify({"error": "System not initialized"}), 400
+
+    # Get whatsapp_number from query params if provided
+    whatsapp_number = request.args.get('whatsapp_number')
+
+    try:
+        status = system_instance.get_memory_status(whatsapp_number)
+        return jsonify({
+            "success": True,
+            "memory_status": status
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/clear-memory', methods=['POST'])
+def clear_memory():
+    """Clear conversation memory for specific user or all users"""
+    global system_instance
+
+    if system_instance is None:
+        return jsonify({"error": "System not initialized"}), 400
+
+    try:
+        data = request.json or {}
+        whatsapp_number = data.get('whatsapp_number')
+
+        if whatsapp_number:
+            # Clear specific user
+            if whatsapp_number in system_instance.conversation_memory:
+                del system_instance.conversation_memory[whatsapp_number]
+                return jsonify({
+                    "success": True,
+                    "message": f"Memory cleared for {whatsapp_number}"
+                })
+            else:
+                return jsonify({
+                    "success": False,
+                    "message": f"No memory found for {whatsapp_number}"
+                })
+        else:
+            # Clear all memory
+            count = len(system_instance.conversation_memory)
+            system_instance.conversation_memory.clear()
+            return jsonify({
+                "success": True,
+                "message": f"All memory cleared ({count} conversations)"
+            })
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
 # ===================== TEST & SERVER START =====================
 
