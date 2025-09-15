@@ -1434,7 +1434,7 @@ intent_analyzer = Agent(
     instructions="""Sen bir Niyet Analizcisisin. Müşteri mesajlarını kategorize et:
 
 **Kategoriler**:
-- URUN_ARAMA: "100x200 silindir", "filtre ariyorum", "ürün arıyorum", "valf arıyorum", "5/2 valf", "3/2 valf", "pnömatik valf", "şartlandırıcı", "regülatör", "yağlayıcı", "FRY", "MFRY", "MFR", "MR", "Y 1/2", "hava hazırlayıcı" -> transfer_to_product_specialist()
+- URUN_ARAMA: "100x200 silindir", "filtre ariyorum", "ürün arıyorum", "valf arıyorum", "5/2 valf", "3/2 valf", "pnömatik valf", "şartlandırıcı", "regülatör", "yağlayıcı", "FRY", "MFRY", "MFR", "MR", "Y 1/2", "hava hazırlayıcı", "13B0099", "10A0003" (DİREKT ÜRÜN KODLARI), "[ALFASAYISAL KOD] stokta var mı?", "[ÜRÜN KODU] fiyatı?", boşluksuz alfasayısal kodlar -> transfer_to_product_specialist()
 - ÜRÜN_SEÇİLDİ: "ÜRÜN_SEÇİLDİ: [kod] - [isim] - [fiyat] TL" veya "URUN_SECILDI: [kod] - [isim] - [fiyat] TL" (HTML'den gelen) -> transfer_to_sales_expert()
 - URUN_SECIMI: "3. ürünü seç", "bu ürünün fiyatı", "ürünü seçtim", "Kod XXX seçtim", "fiyat nedir" -> transfer_to_sales_expert()
 - MIKTAR_GİRİŞİ: **TASK 2.5 - ENHANCED** Çok çeşitli miktar formatları:
@@ -1459,8 +1459,10 @@ intent_analyzer = Agent(
 - Müşteri miktar girer ("5", "10 adet", "beş tane", vb.) -> Intent Analyzer MIKTAR_GİRİŞİ algılar -> transfer_to_order_manager()
 - Order Manager context-aware olarak direkt sipariş oluşturur
 
-**KRITIK**: MIKTAR_GİRİŞİ algılandığında mutlaka transfer_to_order_manager() çağır!
-TÜRKÇE yanıt ver!""",
+**KRİTİK KURALLAR**:
+1. MIKTAR_GİRİŞİ algılandığında mutlaka transfer_to_order_manager() çağır!
+2. **DİREKT ÜRÜN KODU ALGıLAMA**: Boşluksuz alfasayısal kod görürsen (13B0099, 10A0003, ABC123 gibi) -> MUTLAKA transfer_to_product_specialist() çağır! "stokta var mı", "fiyatı", "ürünü arıyorum" gibi ifadeler olmasına gerek yok.
+3. TÜRKÇE yanıt ver!""",
     functions=[transfer_to_customer_manager, transfer_to_product_specialist, transfer_to_sales_expert, transfer_to_order_manager]
 )
 
