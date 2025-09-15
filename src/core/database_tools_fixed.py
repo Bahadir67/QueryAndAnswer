@@ -328,26 +328,65 @@ class DatabaseManager:
         try:
             cursor = self.connection.cursor()
             
+            # Direkt ürün kodu araması için önce exact match kontrol et
+            exact_match_sql = """
+            SELECT product_code, product_name,
+                   MIN(price) as min_price, MAX(price) as max_price,
+                   SUM(stock_quantity) as total_stock,
+                   description, specifications, category, brand
+            FROM products_semantic
+            WHERE product_code = %s
+            GROUP BY product_code, product_name, description, specifications, category, brand
+            """
+
+            cursor.execute(exact_match_sql, (search_term,))
+            exact_results = cursor.fetchall()
+
+            if exact_results:
+                # Exact match bulundu - tek ürün olarak döndür
+                row = exact_results[0]
+                products = []
+                price_text = f"{row[2]} TL" if row[2] == row[3] else f"{row[2]}-{row[3]} TL"
+                products.append({
+                    'id': 0,  # Grouped result için synthetic ID
+                    'product_code': row[0],
+                    'product_name': row[1],
+                    'price': float(row[2]) if row[2] else 0.0,
+                    'price_range': price_text,
+                    'stock_quantity': int(row[4]) if row[4] else 0,
+                    'description': row[5] or '',
+                    'specifications': row[6] or '',
+                    'category': row[7] or '',
+                    'brand': row[8] or '',
+                    'is_exact_match': True
+                })
+                return products
+
+            # Exact match yok, normal arama yap
             sql = """
             SELECT id, product_code, product_name, price, stock_quantity,
                    description, specifications, category, brand
             FROM products_semantic
-            WHERE 
-                product_name ILIKE %s
+            WHERE
+                product_code ILIKE %s
+                OR product_name ILIKE %s
                 OR description ILIKE %s
                 OR specifications ILIKE %s
-            ORDER BY stock_quantity DESC
+            ORDER BY
+                CASE WHEN product_code ILIKE %s THEN 1 ELSE 2 END,
+                stock_quantity DESC
             LIMIT %s
             """
-            
+
             pattern = f'%{search_term}%'
-            cursor.execute(sql, (pattern, pattern, pattern, limit))
+            exact_code_pattern = search_term  # For exact code match priority
+            cursor.execute(sql, (pattern, pattern, pattern, pattern, exact_code_pattern, limit))
             results = cursor.fetchall()
             cursor.close()
-            
+
             products = []
             for row in results:
-                products.append({
+                product = {
                     'id': row[0],
                     'product_code': row[1],
                     'product_name': row[2],
@@ -357,8 +396,14 @@ class DatabaseManager:
                     'specifications': row[6] or '',
                     'category': row[7] or '',
                     'brand': row[8] or ''
-                })
-            
+                }
+
+                # Normal arama sonucunda da exact match kontrol et
+                if row[1] == search_term:  # product_code exact match
+                    product['is_exact_match'] = True
+
+                products.append(product)
+
             return products
             
         except Exception as e:
@@ -456,13 +501,19 @@ class DatabaseManager:
                 # Format for compatibility
                 formatted_products = []
                 for p in products:
-                    formatted_products.append({
+                    formatted_product = {
                         "code": p['product_code'],
                         "name": p['product_name'],
                         "price": int(p['price']),
                         "stock": p['stock_quantity'],
                         "description": p['description']
-                    })
+                    }
+                    # Tüm extra field'ları kopyala (is_exact_match, price_range vb.)
+                    extra_fields = ['is_exact_match', 'price_range']
+                    for field in extra_fields:
+                        if field in p and p[field] is not None:
+                            formatted_product[field] = p[field]
+                    formatted_products.append(formatted_product)
                 
                 processing_time = time.time() - start_time
                 print(f"[DB] Search completed in {processing_time:.3f}s - {len(formatted_products)} products")

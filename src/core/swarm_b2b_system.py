@@ -742,17 +742,32 @@ def air_preparation_search_tool(query: str) -> str:
 
 def product_search_tool(query: str) -> str:
     """OPTIMIZE Ürün ara - Session'a kaydet ve liste linki oluştur"""
-    import uuid
+    import uuid, re
     try:
         # Global context'ten WhatsApp numarasını al
         global current_whatsapp_context
+
+        # Direkt ürün kodu kontrolü - örn: 13B0099, ABC123, XYZ-456 gibi
+        # Pattern: 3+ karakter, harf/rakam/tire kombinasyonu, boşluk yok
+        direct_code_pattern = r'^[A-Za-z0-9\-]{3,}$'
+        is_direct_code = re.match(direct_code_pattern, query.strip()) and ' ' not in query.strip()
+
         # Optimize search kullan
         result = db.search_products_optimized(query)
         if result.get('success'):
             count = result['count']
             all_products = result['products']  # Tüm ürünleri al
-            
+
             if count > 0:
+                # DIREKT ÜRÜN KODU: Exact match kontrolü
+                if is_direct_code and count == 1:
+                    exact_product = all_products[0]
+                    # is_exact_match flag'ini kontrol et
+                    if exact_product.get('is_exact_match', False):
+                        # Fiyat aralığı varsa onu göster
+                        price_display = exact_product.get('price_range', f"{exact_product['price']} TL")
+                        # Direkt satış akışına geç
+                        return f"🎯 TAM EŞLEŞME BULUNDU!\n\n📦 {exact_product['name']}\n💰 {price_display}\n📋 Kod: {exact_product['code']}\n📦 Stok: {exact_product['stock']} adet\n\n💡 Bu ürünü almak ister misiniz? Sipariş vermek için Sales Expert'e yönlendiriliyorsunuz..."
                 # Session ID oluştur
                 session_id = str(uuid.uuid4())[:8]
                 
@@ -1494,6 +1509,13 @@ product_specialist = Agent(
    - hava hazırlayıcı
 3. Diğer tüm durumlarda -> product_search_tool kullan
 
+**DIREKT ÜRÜN KODU AKIŞI**:
+- Eğer search tool "🎯 TAM EŞLEŞME BULUNDU!" mesajı dönerse:
+- Bu direkt ürün kodu demektir (örn: 13B0099, ABC123)
+- OTOMATIK olarak transfer_to_sales_expert() fonksiyonunu çağır
+- Müşteriyi direkt Sales Expert'e yönlendir
+- Liste oluşturma, HTML sayfa üretme gerekmez!
+
 **RESPONSE FORMAT**:
 When tool finds products, return the tool response plus a helpful comment:
 
@@ -1511,7 +1533,7 @@ Then add your own contextual message based on:
 Example: "İsteğinize uygun seçenekleri listelendi. Teknik detayları inceleyip uygun olanları seçebilirsiniz."
 
 **NEW WORKFLOW**: When product selected from HTML list, customer goes directly to Sales Expert via ÜRÜN_SEÇİLDİ intent!""",
-    functions=[product_search_tool, valve_search_tool, air_preparation_search_tool, stock_check_tool, transfer_from_product_to_order]
+    functions=[product_search_tool, valve_search_tool, air_preparation_search_tool, stock_check_tool, transfer_from_product_to_order, transfer_to_sales_expert]
 )
 
 # 4. Sales Expert - TASK 2.4: Product confirmation + pricing + order history
