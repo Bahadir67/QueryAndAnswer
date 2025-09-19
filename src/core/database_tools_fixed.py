@@ -644,9 +644,9 @@ Sorgu: "{query}"
 
 KURALLAR:
 1. ÇAP ve STROK HARİÇ her tanımlayıcı kelime extras'a gider
-2. Tanımlayıcı ifadeler: manyetik, yastık, sensör, mafsallı, bağlantı, çift etkili, 
-   tek etkili, paslanmaz, flanşlı, vida, pnömatik, hidrolik, hızlı, krom, 
-   döner, sabit, ayarlanabilir, kompakt, uzun, kısa, vs...
+2. Tanımlayıcı ifadeler: manyetik, yastık, yastıklı, sensör, sensörlü, mafsallı, bağlantı, çift etkili,
+   tek etkili, paslanmaz, flanşlı, vida, pnömatik, hidrolik, hızlı, krom,
+   döner, sabit, ayarlanabilir, kompakt, uzun, kısa, cushion, YAST, vs...
 3. Sıfat ve özellik belirten HER kelime tanımlayıcıdır
 4. TÜRKÇE EKLER HARIÇ: lık, lük, li, lı, lu, lü (sadece çap/strok ekleridir)
 
@@ -657,6 +657,8 @@ KURALLAR:
 - "100x200 paslanmaz silindir sensörlü" -> cap:100, strok:200, extras:["paslanmaz","sensörlü"]
 - "80 lük silindir flanşlı bağlantı vida" -> cap:80, strok:null, extras:["flanşlı","bağlantı","vida"]
 - "100 lük ISO silindir" -> cap:100, strok:null, extras:["ISO"]
+- "100x200 yastıklı silindir" -> cap:100, strok:200, extras:["yastıklı"]
+- "40x50 yastık silindir" -> cap:40, strok:50, extras:["yastık"]
 
 ÇOK ÖNEMLİ: 
 - Sayısal değerler dışında kalan HER tanımlayıcı kelimeyi extras'a ekle!

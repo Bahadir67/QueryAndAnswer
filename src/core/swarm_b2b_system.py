@@ -1436,6 +1436,12 @@ intent_analyzer = Agent(
     model=OPENROUTER_MODEL,
     instructions="""Sen bir Niyet Analizcisisin. Müşteri mesajlarını kategorize et:
 
+**ÖNCELIK SIRASI (Çakışma durumunda)**:
+1. 🔥 MIKTAR_GİRİŞİ (En yüksek - her şeyi geçersiz kılar)
+2. ⚡ ÜRÜN_SEÇİLDİ (HTML tetikleyicisi - kesin kalıp)
+3. 🎯 DİREKT_ÜRÜN_KODU (Regex eşleşmesi)
+4. 📋 Diğer kategoriler (context'e göre)
+
 **Kategoriler**:
 - URUN_ARAMA: "100x200 silindir", "filtre ariyorum", "ürün arıyorum", "valf arıyorum", "5/2 valf", "3/2 valf", "pnömatik valf", "şartlandırıcı", "regülatör", "yağlayıcı", "FRY", "MFRY", "MFR", "MR", "Y 1/2", "hava hazırlayıcı", "13B0099", "10A0003" (DİREKT ÜRÜN KODLARI), "[ALFASAYISAL KOD] stokta var mı?", "[ÜRÜN KODU] fiyatı?", boşluksuz alfasayısal kodlar -> transfer_to_product_specialist()
 - ÜRÜN_SEÇİLDİ: "ÜRÜN_SEÇİLDİ: [kod] - [isim] - [fiyat] TL" veya "URUN_SECILDI: [kod] - [isim] - [fiyat] TL" (HTML'den gelen) -> transfer_to_sales_expert()
@@ -1443,9 +1449,10 @@ intent_analyzer = Agent(
 - MIKTAR_GİRİŞİ: **TASK 2.5 - ENHANCED** Çok çeşitli miktar formatları:
    Pure sayı: "5", "10", "25"
    Turkish units: "5 adet", "10 tane", "3 piece", "7 pcs"
-   Turkish yazılı: "beş adet", "iki tane", "on"
-   Yaklaşık: "yaklaşık 5", "around 10"
-   Range: "5-10" (ilk sayıyı al)
+   Turkish yazılı: "beş adet", "iki tane", "on", "bir", "iki", "üç", "dört", "beş", "altı", "yedi", "sekiz", "dokuz", "on"
+   Yaklaşık: "yaklaşık 5", "around 10", "5-6 tane"
+   Range: "5-10", "beş altı tane", "3 ya da 4 adet"
+   Belirsiz: "birkaç", "az", "çok", "biraz"
   -> transfer_to_order_manager()
 - SIPARIS: "sipariş ver", "satın al", "siparişimi tamamla", "onaylıyorum", "siparis vermek istiyorum", "order", "satın almak istiyorum", "EVET", "evet", "tamam", "onayla" -> transfer_to_order_manager()
 - SIPARIS_IPTAL: "iptal", "cancel", "vazgeçtim", "hayır", "istemiyorum" -> transfer_to_order_manager()
@@ -1456,17 +1463,21 @@ intent_analyzer = Agent(
 - TEKNIK_SORU: "ürün özellikleri", "uyumluluk" -> transfer_to_sales_expert()
 - HESAP_SORU: "bakiye", "kredi limiti", "müşteri bilgisi" -> transfer_to_customer_manager()
 
+**ÇAKIŞMA ÇÖZÜMÜ**: Birden fazla kategori uyarsa, yukarıdaki öncelik sırasına göre ilkini seç!
+
 **TASK 2.5 WORKFLOW**:
 - HTML listesinden "ÜRÜN_SEÇİLDİ: [kod] - [isim] - [fiyat] TL" gelirse -> transfer_to_sales_expert()
-- Sales Expert ürünü onaylar, miktar sorar 
+- Sales Expert ürünü onaylar, miktar sorar
 - Müşteri miktar girer ("5", "10 adet", "beş tane", vb.) -> Intent Analyzer MIKTAR_GİRİŞİ algılar -> transfer_to_order_manager()
 - Order Manager context-aware olarak direkt sipariş oluşturur
 
 **KRİTİK KURALLAR**:
-1. MIKTAR_GİRİŞİ algılandığında mutlaka transfer_to_order_manager() çağır!
-2. **DİREKT ÜRÜN KODU ALGıLAMA**: Boşluksuz alfasayısal kod görürsen (13B0099, 10A0003, ABC123 gibi) -> MUTLAKA transfer_to_product_specialist() çağır! "stokta var mı", "fiyatı", "ürünü arıyorum" gibi ifadeler olmasına gerek yok.
-3. **PURE SAYI KURALII**: Sadece rakam olan mesajlar ("2", "5", "10") -> MUTLAKA MIKTAR_GİRİŞİ olarak algıla ve transfer_to_order_manager() çağır!
-4. TÜRKÇE yanıt ver!""",
+1. 🔥 MIKTAR_GİRİŞİ algılandığında mutlaka transfer_to_order_manager() çağır!
+2. 🎯 **DİREKT ÜRÜN KODU ALGıLAMA**: Boşluksuz alfasayısal kod görürsen (13B0099, 10A0003, ABC123 gibi) -> MUTLAKA transfer_to_product_specialist() çağır! "stokta var mı", "fiyatı", "ürünü arıyorum" gibi ifadeler olmasına gerek yok.
+3. ⚡ **PURE SAYI KURALII**: Sadece rakam olan mesajlar ("2", "5", "10") -> MUTLAKA MIKTAR_GİRİŞİ olarak algıla ve transfer_to_order_manager() çağır!
+4. 📋 **ÖNCELİK KONTROLÜ**: Her karar verirken öncelik sırasını kontrol et!
+5. 🚫 **SADECE FONKSİYON ÇAĞIR**: Kategori analizi açıklaması YAPMA! Direkt uygun agent'a yönlendir.
+6. **SESİZ TRANSFER**: Müşteriye açıklama yapma, sadece doğru agent'a transfer et!""",
     functions=[transfer_to_customer_manager, transfer_to_product_specialist, transfer_to_sales_expert, transfer_to_order_manager]
 )
 
@@ -1643,8 +1654,13 @@ class SwarmB2BSystem:
         self.memory_settings = {
             "max_messages": 5,  # Store last 5 messages (FIFO)
             "timeout_minutes": 30,  # 30-minute timeout
-            "cleanup_on_message": True  # Cleanup expired conversations after each message
+            "cleanup_on_message": True,  # Cleanup expired conversations after each message
+            "extract_context": True  # Auto-extract search context from messages
         }
+
+        # Auto-extracted context for better continuity
+        self.extracted_context = {}  # {whatsapp_number: {"product_type": str, "dimensions": str, "features": []}}
+
 
         print("[Swarm] Single-Product B2B System initialized")
         print("Agents: Intent Analyzer -> Customer/Product/Sales/Order")
@@ -1675,8 +1691,43 @@ class SwarmB2BSystem:
         if expired_numbers:
             print(f"[Memory] Cleaned up {len(expired_numbers)} expired conversations")
 
+    def extract_search_context(self, message: str, whatsapp_number: str):
+        """Auto-extract and accumulate search context from messages"""
+        if whatsapp_number not in self.extracted_context:
+            self.extracted_context[whatsapp_number] = {
+                "product_type": None,
+                "dimensions": None,
+                "features": [],
+                "last_search": None
+            }
+
+        context = self.extracted_context[whatsapp_number]
+        message_lower = message.lower()
+
+        # Extract product type
+        product_types = ["silindir", "valf", "filtre", "regülatör", "şartlandırıcı", "yağlayıcı"]
+        for ptype in product_types:
+            if ptype in message_lower:
+                context["product_type"] = ptype
+                context["last_search"] = message
+                print(f"[Context] Extracted product type: {ptype}")
+
+        # Extract dimensions (e.g., 100x200, 50x100)
+        import re
+        dimension_match = re.search(r'(\d+)\s*[xX]\s*(\d+)', message)
+        if dimension_match:
+            context["dimensions"] = dimension_match.group(0)
+            print(f"[Context] Extracted dimensions: {context['dimensions']}")
+
+        # Extract features
+        feature_keywords = ["yastıklı", "manyetik", "çift etkili", "tek etkili", "5/2", "3/2", "paslanmaz"]
+        for feature in feature_keywords:
+            if feature in message_lower and feature not in context["features"]:
+                context["features"].append(feature)
+                print(f"[Context] Added feature: {feature}")
+
     def add_message_to_memory(self, whatsapp_number: str, role: str, content: str):
-        """Add message to conversation memory with FIFO management"""
+        """Add message to conversation memory with FIFO management and context extraction"""
         current_time = datetime.now()
 
         # Initialize conversation memory if not exists
@@ -1688,6 +1739,10 @@ class SwarmB2BSystem:
 
         memory_data = self.conversation_memory[whatsapp_number]
         messages = memory_data["messages"]
+
+        # Auto-extract context from user messages
+        if role == "user" and self.memory_settings.get("extract_context", False):
+            self.extract_search_context(content, whatsapp_number)
 
         # Add new message
         new_message = {
@@ -1781,10 +1836,16 @@ class SwarmB2BSystem:
 
         # Swarm'ı çalıştır - Intent Analyzer ile başla
         try:
+            # Get extracted context if available
+            extracted_ctx = self.extracted_context.get(whatsapp_number, {})
+
             response = self.client.run(
                 agent=intent_analyzer,
                 messages=messages_for_swarm,
-                context_variables={"whatsapp_number": whatsapp_number},
+                context_variables={
+                    "whatsapp_number": whatsapp_number,
+                    "extracted_context": extracted_ctx  # Pass accumulated context
+                },
                 debug=True  # Debug açık - handoff'ları görmek için
             )
             
