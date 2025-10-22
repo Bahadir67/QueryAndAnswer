@@ -15,6 +15,7 @@ import random
 import re
 import time
 import hashlib
+import requests
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Tuple
 from swarm import Swarm, Agent
@@ -308,6 +309,50 @@ def detect_quantity_input(message: str) -> tuple[bool, int | str]:
     except Exception as e:
         return False, f"[ERROR] Miktar analiz hatası: {str(e)}"
 
+def create_secure_product_link(filename, whatsapp_number):
+    """
+    Create a secure token-protected link for product HTML
+
+    Args:
+        filename: HTML filename (e.g., products_905306897885_abc123_1234567890.html)
+        whatsapp_number: WhatsApp number (e.g., 905306897885@c.us)
+
+    Returns:
+        Secure URL with token or fallback to direct URL
+    """
+    try:
+        product_server_port = os.getenv('PRODUCT_SERVER_PORT', '3005')
+        tunnel_url = os.getenv('TUNNEL_URL', f'http://localhost:{product_server_port}')
+
+        # Try to create a secure token
+        token_api_url = f'http://localhost:{product_server_port}/api/create-token'
+
+        response = requests.post(token_api_url, json={
+            'filename': filename,
+            'whatsappNumber': whatsapp_number
+        }, timeout=2)
+
+        if response.status_code == 200:
+            data = response.json()
+            if data.get('success') and data.get('secureUrl'):
+                # Replace localhost with tunnel URL if available
+                secure_url = data['secureUrl']
+                if tunnel_url and 'localhost' in secure_url:
+                    secure_url = secure_url.replace(f'http://localhost:{product_server_port}', tunnel_url)
+
+                print(f"[SECURE LINK] Created token-protected link: {secure_url[:50]}...")
+                return secure_url
+
+        # Fallback to direct link if token creation fails
+        print(f"[FALLBACK] Token creation failed, using direct link")
+        return f"{tunnel_url}/products/{filename}"
+
+    except Exception as e:
+        # Fallback to direct link on any error
+        print(f"[ERROR] Secure link creation failed: {e}, using direct link")
+        tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3006')
+        return f"{tunnel_url}/products/{filename}"
+
 def generate_product_html(products, query, html_filename):
     """Generate HTML content for product list"""
     html = f"""<!DOCTYPE html>
@@ -594,11 +639,12 @@ def valve_search_tool(query: str) -> str:
             
             # Stokta olan ürünleri say (products değişkenini kullan)
             in_stock_count = len([p for p in products if p['stock'] > 0])
-            
-            # Liste linki response (Tunnel URL kullan)
-            tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3006')
+
+            # Secure token-protected URL oluştur
+            list_url = create_secure_product_link(html_filename, actual_whatsapp)
+
             response = f"💼 {count} valf - {in_stock_count} stokta\n\n"
-            response += f"URUN LISTESI:\n{tunnel_url}/products/{html_filename}"
+            response += f"URUN LISTESI:\n{list_url}"
             
             print(f"[VALVE SEARCH] Found {count} valves, created session: {session_id}")
             return response
@@ -727,11 +773,11 @@ def air_preparation_search_tool(query: str) -> str:
                 f.write(html_content)
             
             print(f"[HTML] Created: {filename}")
-            
-            # HTML listesi için URL (env'den al)
-            tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3006')
-            list_url = f"{tunnel_url}/products/{filename}"
-            
+
+            # Secure token-protected URL oluştur
+            whatsapp_number_full = current_whatsapp_context.get('whatsapp_number', '905306897885@c.us')
+            list_url = create_secure_product_link(filename, whatsapp_number_full)
+
             response = f"💼 {count} ürün - {in_stock} stokta\n\n"
             response += f"URUN LISTESI:\n{list_url}"
             
@@ -811,11 +857,12 @@ def product_search_tool(query: str) -> str:
                 
                 # Stokta olan ürünleri say
                 in_stock_count = len([p for p in all_products if p['stock'] > 0])
-                
-                # Liste linki response (Tunnel URL kullan)
-                tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3006')
+
+                # Secure token-protected URL oluştur
+                list_url = create_secure_product_link(html_filename, actual_whatsapp)
+
                 response = f"💼 {count} ürün - {in_stock_count} stokta\n\n"
-                response += f"URUN LISTESI:\n{tunnel_url}/products/{html_filename}"
+                response += f"URUN LISTESI:\n{list_url}"
                 
                 print(f"[PRODUCT SEARCH] Found {count} products, created session: {session_id}")
                 return response
